@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stocks vs Market — Weekly</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<script src="portfolio.js"></script>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f7; color: #1d1d1f; padding: 20px; font-size: 14px; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #6e6e73; margin-bottom: 18px; }
+
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .toolbar label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #6e6e73; margin-right: 4px; }
+  select { padding: 6px 10px; border: 1px solid #d1d1d6; border-radius: 8px; font-size: 13px; font-family: inherit; background: #fff; outline: none; }
+  select:focus { border-color: #007aff; }
+
+  .btn { padding: 7px 14px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.82; }
+  .btn[disabled] { opacity: 0.55; cursor: progress; }
+  .btn-primary { background: #007aff; color: #fff; }
+  #status { font-size: 11px; color: #8e8e93; }
+  #status.error { color: #c0392b; }
+
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+  .card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #6e6e73; margin-bottom: 5px; }
+  .card-value { font-size: 19px; font-weight: 700; }
+  .card-value.positive { color: #34c759; }
+  .card-value.negative { color: #ff3b30; }
+  .card-sub { font-size: 11px; color: #8e8e93; margin-top: 3px; }
+
+  .chart-wrap { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-bottom: 20px; }
+  .chart-wrap h2 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .chart-wrap .hint { font-size: 11px; color: #8e8e93; margin-bottom: 12px; }
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 860px) { .chart-row { grid-template-columns: 1fr; } .cards { grid-template-columns: repeat(2,1fr);} }
+
+  .table-wrap { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #f5f5f7; padding: 10px 12px; text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #6e6e73; border-bottom: 1px solid #e5e5ea; cursor: pointer; user-select: none; }
+  thead th:first-child { text-align: left; }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid #f2f2f7; text-align: right; }
+  tbody td:first-child { text-align: left; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #fafafa; }
+  .ticker { font-weight: 700; }
+  .company { font-size: 11px; color: #6e6e73; margin-top: 1px; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .badge.positive { background: #d1f5da; color: #1a7a35; }
+  .badge.negative { background: #ffe5e5; color: #c0392b; }
+  .badge.neutral { background: #e5e5ea; color: #3a3a3c; }
+  .empty-state { text-align: center; padding: 40px; color: #6e6e73; }
+</style>
+</head>
+<body>
+<h1>📊 Stocks vs Market — Weekly Performance</h1>
+<p class="subtitle">Weekly returns of each holding compared to a market benchmark. “vs Market” (alpha) = stock return − benchmark return for the same week.</p>
+
+<div class="toolbar">
+  <span><label>Benchmark</label>
+    <select id="benchmark">
+      <option value="SPY">S&amp;P 500 (SPY)</option>
+      <option value="QQQ">Nasdaq 100 (QQQ)</option>
+      <option value="DIA">Dow Jones (DIA)</option>
+      <option value="VTI">Total Market (VTI)</option>
+    </select>
+  </span>
+  <span><label>Period</label>
+    <select id="period">
+      <option value="3mo">3 months</option>
+      <option value="6mo" selected>6 months</option>
+      <option value="1y">1 year</option>
+      <option value="2y">2 years</option>
+    </select>
+  </span>
+  <span><label>Return type</label>
+    <select id="returntype">
+      <option value="total" selected>Total return (incl. dividends)</option>
+      <option value="price">Price return only</option>
+    </select>
+  </span>
+  <button class="btn btn-primary" id="load-btn" onclick="loadData()">🔄 Refresh Data</button>
+  <span id="status"></span>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<div class="chart-wrap">
+  <h2>Cumulative Weekly Return vs Benchmark</h2>
+  <div class="hint">Each line is normalized to 0% at the start of the period. The dashed black line is the benchmark.</div>
+  <canvas id="cum-chart" height="150"></canvas>
+</div>
+
+<div class="chart-row">
+  <div class="chart-wrap">
+    <h2>Latest Week — vs Market (Alpha)</h2>
+    <div class="hint" id="alpha-week-label">Most recent completed week</div>
+    <canvas id="alpha-chart" height="220"></canvas>
+  </div>
+  <div class="chart-wrap">
+    <h2>Win Rate vs Market</h2>
+    <div class="hint">Share of weeks each stock beat the benchmark</div>
+    <canvas id="winrate-chart" height="220"></canvas>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th data-sort="ticker">Stock</th>
+        <th data-sort="weekRet">This Week</th>
+        <th data-sort="benchWeek">Market</th>
+        <th data-sort="weekAlpha">vs Market</th>
+        <th data-sort="periodRet">Period Return</th>
+        <th data-sort="periodAlpha">Period vs Market</th>
+        <th data-sort="winRate">Win Rate</th>
+      </tr>
+    </thead>
+    <tbody id="rows"><tr><td colspan="7" class="empty-state">Click “Refresh Data” to load weekly performance.</td></tr></tbody>
+  </table>
+</div>
+
+<script>
+  // Tickers come from the shared encrypted portfolio store — exactly the unique
+  // stocks held in the Stock Tracker (deduped). Populated after unlock, below.
+  let HOLDINGS = [];
+
+  const COLORS = ['#007aff','#34c759','#ff9500','#ff3b30','#af52de','#5ac8fa','#ffcc00','#ff6b6b','#4ecdc4'];
+
+  // Yahoo Finance sends no CORS headers, so requests are routed through public
+  // proxies. r.jina.ai (with x-respond-with:text -> raw JSON) is the primary;
+  // the others are fallbacks in case it's rate-limited or down.
+  const PROXIES = [
+    { build: u => ({ target: 'https://r.jina.ai/' + u, opts: { cache: 'no-store', headers: { 'x-respond-with': 'text' } } }) },
+    { build: u => ({ target: u, opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
+  ];
+
+  let cumChart, alphaChart, winrateChart;
+  let lastRows = [], sortKey = 'periodAlpha', sortDir = -1;
+
+  function pct(n) { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
+  function cls(n) { return n > 0.0005 ? 'positive' : n < -0.0005 ? 'negative' : 'neutral'; }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // Fetch a Yahoo chart URL through the proxy chain; returns parsed JSON or null.
+  async function getChartJson(url) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      for (const p of PROXIES) {
+        try {
+          const { target, opts } = p.build(url);
+          const res = await fetch(target, opts);
+          if (!res.ok) continue;
+          const text = await res.text();
+          let data;
+          try { data = JSON.parse(text); } catch (e) { continue; }
+          // Safety: unwrap jina's default envelope if x-respond-with was ignored.
+          if (data && data.data && typeof data.data.content === 'string') {
+            try { data = JSON.parse(data.data.content); } catch (e) { continue; }
+          }
+          if (data && data.chart && data.chart.result && data.chart.result[0]) return data;
+        } catch (e) { /* next proxy */ }
+      }
+      await sleep(700); // brief pause before retrying flaky proxies
+    }
+    return null;
+  }
+
+  // Fetch weekly price + adjusted-close series -> [{ t, price, total }] ascending
+  async function fetchWeekly(ticker, range) {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1wk&range=${range}`;
+    const data = await getChartJson(url);
+    const r = data?.chart?.result?.[0];
+    if (!r || !r.timestamp) return null;
+    const ts = r.timestamp;
+    const adj = r.indicators?.adjclose?.[0]?.adjclose;
+    const close = r.indicators?.quote?.[0]?.close;
+    const series = ts.map((t, i) => {
+      const price = close ? close[i] : null;
+      const total = (adj && adj[i] != null) ? adj[i] : price;
+      return { t, price, total };
+    }).filter(d => d.price != null && d.price > 0 && d.total != null && d.total > 0);
+    return series.length ? series : null;
+  }
+
+  // Align a series to a set of week-timestamps (nearest within 4 days)
+  function alignClose(series, weekTs, field) {
+    const TOL = 4 * 86400; // seconds
+    let j = 0;
+    return weekTs.map(t => {
+      while (j < series.length - 1 && Math.abs(series[j + 1].t - t) <= Math.abs(series[j].t - t)) j++;
+      const d = series[j];
+      return (d && Math.abs(d.t - t) <= TOL) ? d[field] : null;
+    });
+  }
+
+  function weeklyReturns(closes) {
+    // returns array same length; index 0 = null (no prior week)
+    return closes.map((c, i) => (i === 0 || closes[i - 1] == null || c == null) ? null : (c / closes[i - 1] - 1) * 100);
+  }
+
+  // Cache of the last network fetch so the return-type toggle recomputes
+  // instantly without hitting the proxies again.
+  let cache = null; // { benchmark, range, fetched, loadedAt }
+
+  async function loadData() {
+    const btn = document.getElementById('load-btn');
+    const status = document.getElementById('status');
+    const benchmark = document.getElementById('benchmark').value;
+    const range = document.getElementById('period').value;
+
+    if (HOLDINGS.length === 0) {
+      status.className = 'error';
+      status.textContent = 'No stocks in the tracker yet — add positions on the Stock Tracker page.';
+      document.getElementById('rows').innerHTML = '<tr><td colspan="7" class="empty-state">No stocks in the tracker.</td></tr>';
+      return;
+    }
+
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = '⏳ Loading…';
+    status.className = '';
+    status.textContent = `Fetching weekly data for ${HOLDINGS.length} stocks + ${benchmark}…`;
+
+    const symbols = [benchmark, ...HOLDINGS.map(h => h.ticker)];
+    const fetched = {};
+    await Promise.all(symbols.map(async s => { fetched[s] = await fetchWeekly(s, range); }));
+
+    btn.disabled = false; btn.textContent = label;
+
+    if (!fetched[benchmark]) {
+      status.className = 'error';
+      status.textContent = 'Could not load benchmark data (network/proxy blocked). Try again or pick a different benchmark.';
+      return;
+    }
+
+    cache = { benchmark, range, fetched, loadedAt: new Date() };
+    compute();
+  }
+
+  // Recompute all metrics + charts from the cached data using the selected
+  // return type (total return incl. dividends, or price return only).
+  function compute() {
+    if (!cache) return;
+    const status = document.getElementById('status');
+    const { benchmark, range, fetched, loadedAt } = cache;
+    const field = document.getElementById('returntype').value === 'price' ? 'price' : 'total';
+
+    const bench = fetched[benchmark];
+    const weekTs = bench.map(d => d.t);
+    const benchCloses = bench.map(d => d[field]);
+    const benchRet = weeklyReturns(benchCloses);
+    const benchCum = cumulative(benchCloses);
+
+    const failed = [];
+    const series = [];
+
+    HOLDINGS.forEach((h, idx) => {
+      const raw = fetched[h.ticker];
+      if (!raw) { failed.push(h.ticker); return; }
+      const closes = alignClose(raw, weekTs, field);
+      const ret = weeklyReturns(closes);
+      const cum = cumulative(closes);
+
+      // latest completed week index = last index with valid return on both sides
+      let li = ret.length - 1;
+      while (li > 0 && (ret[li] == null || benchRet[li] == null)) li--;
+
+      const weekRet = ret[li] ?? 0;
+      const benchWeek = benchRet[li] ?? 0;
+      const weekAlpha = weekRet - benchWeek;
+
+      const periodRet = cum[cum.length - 1] ?? 0;
+      const periodAlpha = periodRet - (benchCum[benchCum.length - 1] ?? 0);
+
+      let wins = 0, total = 0;
+      for (let i = 1; i < ret.length; i++) {
+        if (ret[i] != null && benchRet[i] != null) { total++; if (ret[i] > benchRet[i]) wins++; }
+      }
+      const winRate = total ? (wins / total) * 100 : 0;
+
+      series.push({
+        ticker: h.ticker, company: h.company, color: COLORS[idx % COLORS.length],
+        cum, weekRet, benchWeek, weekAlpha, periodRet, periodAlpha, winRate,
+      });
+    });
+
+    const benchPeriod = benchCum[benchCum.length - 1] ?? 0;
+    const benchWeekLatest = (() => { let i = benchRet.length - 1; while (i > 0 && benchRet[i] == null) i--; return benchRet[i] ?? 0; })();
+
+    renderCards(series, benchmark, benchPeriod, benchWeekLatest);
+    renderCumChart(weekTs, series, benchmark, benchCum);
+    renderAlphaChart(weekTs, series);
+    renderWinRateChart(series);
+    lastRows = series;
+    renderTable();
+
+    const now = loadedAt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const mode = field === 'price' ? 'price return' : 'total return';
+    status.className = failed.length ? 'error' : '';
+    status.textContent = `Loaded ${series.length}/${HOLDINGS.length} stocks vs ${benchmark} (${range}, ${mode}) · ${weekTs.length} weeks · ${now}`
+      + (failed.length ? ` · failed: ${failed.join(', ')}` : '');
+  }
+
+  function cumulative(closes) {
+    // % change vs first valid close
+    const base = closes.find(c => c != null);
+    if (base == null) return closes.map(() => null);
+    return closes.map(c => c == null ? null : (c / base - 1) * 100);
+  }
+
+  function renderCards(series, benchmark, benchPeriod, benchWeek) {
+    const sorted = [...series].sort((a, b) => b.periodAlpha - a.periodAlpha);
+    const best = sorted[0], worst = sorted[sorted.length - 1];
+    const beating = series.filter(s => s.periodAlpha > 0).length;
+    const cards = [
+      { label: `Benchmark (${benchmark})`, value: pct(benchPeriod), sub: `Latest week ${pct(benchWeek)}`, cls: cls(benchPeriod) },
+      { label: 'Beating the Market', value: `${beating} / ${series.length}`, sub: 'over the period', cls: beating > series.length / 2 ? 'positive' : 'negative' },
+      { label: 'Top Outperformer', value: best ? best.ticker : '—', sub: best ? `${pct(best.periodAlpha)} vs market` : '', cls: 'positive' },
+      { label: 'Top Underperformer', value: worst ? worst.ticker : '—', sub: worst ? `${pct(worst.periodAlpha)} vs market` : '', cls: 'negative' },
+    ];
+    document.getElementById('cards').innerHTML = cards.map(c =>
+      `<div class="card"><div class="card-label">${c.label}</div><div class="card-value ${c.cls}">${c.value}</div><div class="card-sub">${c.sub}</div></div>`
+    ).join('');
+  }
+
+  function weekLabels(weekTs) {
+    return weekTs.map(t => new Date(t * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  }
+
+  function renderCumChart(weekTs, series, benchmark, benchCum) {
+    const labels = weekLabels(weekTs);
+    const datasets = series.map(s => ({
+      label: s.ticker, data: s.cum, borderColor: s.color, backgroundColor: s.color,
+      borderWidth: 1.6, pointRadius: 0, tension: 0.15, spanGaps: true,
+    }));
+    datasets.push({ label: benchmark, data: benchCum, borderColor: '#1d1d1f', borderWidth: 2.4, borderDash: [6, 4], pointRadius: 0, tension: 0.15, spanGaps: true });
+    if (cumChart) cumChart.destroy();
+    cumChart = new Chart(document.getElementById('cum-chart'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 11 }, usePointStyle: true, boxWidth: 8 } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${pct(ctx.parsed.y)}` } },
+        },
+        scales: { y: { ticks: { callback: v => v + '%' } }, x: { ticks: { maxTicksLimit: 12, font: { size: 10 } } } },
+      },
+    });
+  }
+
+  function renderAlphaChart(weekTs, series) {
+    const sorted = [...series].sort((a, b) => b.weekAlpha - a.weekAlpha);
+    const lastWeek = new Date(weekTs[weekTs.length - 1] * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    document.getElementById('alpha-week-label').textContent = `Week ending ~${lastWeek}: stock return − market return`;
+    if (alphaChart) alphaChart.destroy();
+    alphaChart = new Chart(document.getElementById('alpha-chart'), {
+      type: 'bar',
+      data: {
+        labels: sorted.map(s => s.ticker),
+        datasets: [{ data: sorted.map(s => parseFloat(s.weekAlpha.toFixed(2))),
+          backgroundColor: sorted.map(s => s.weekAlpha >= 0 ? 'rgba(52,199,89,0.75)' : 'rgba(255,59,48,0.75)'), borderRadius: 5 }],
+      },
+      options: {
+        responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + pct(ctx.parsed.y) + ' vs market' } } },
+        scales: { y: { ticks: { callback: v => v + '%' } } },
+      },
+    });
+  }
+
+  function renderWinRateChart(series) {
+    const sorted = [...series].sort((a, b) => b.winRate - a.winRate);
+    if (winrateChart) winrateChart.destroy();
+    winrateChart = new Chart(document.getElementById('winrate-chart'), {
+      type: 'bar',
+      data: {
+        labels: sorted.map(s => s.ticker),
+        datasets: [{ data: sorted.map(s => parseFloat(s.winRate.toFixed(1))),
+          backgroundColor: sorted.map(s => s.winRate >= 50 ? 'rgba(0,122,255,0.75)' : 'rgba(142,142,147,0.6)'), borderRadius: 5 }],
+      },
+      options: {
+        responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' beat market ' + ctx.parsed.y + '% of weeks' } } },
+        scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } },
+      },
+    });
+  }
+
+  function renderTable() {
+    const rows = [...lastRows].sort((a, b) => {
+      const av = a[sortKey], bv = b[sortKey];
+      if (typeof av === 'string') return sortDir * av.localeCompare(bv);
+      return sortDir * (av - bv);
+    });
+    document.getElementById('rows').innerHTML = rows.map(r => `
+      <tr>
+        <td><div class="ticker">${r.ticker}</div><div class="company">${r.company}</div></td>
+        <td><span class="badge ${cls(r.weekRet)}">${pct(r.weekRet)}</span></td>
+        <td>${pct(r.benchWeek)}</td>
+        <td><span class="badge ${cls(r.weekAlpha)}">${pct(r.weekAlpha)}</span></td>
+        <td><span class="badge ${cls(r.periodRet)}">${pct(r.periodRet)}</span></td>
+        <td><span class="badge ${cls(r.periodAlpha)}">${pct(r.periodAlpha)}</span></td>
+        <td>${r.winRate.toFixed(0)}%</td>
+      </tr>`).join('');
+  }
+
+  document.querySelectorAll('thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const k = th.dataset.sort;
+      if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = -1; }
+      if (lastRows.length) renderTable();
+    });
+  });
+
+  // Return-type toggle recomputes from cached data (no refetch needed)
+  document.getElementById('returntype').addEventListener('change', () => {
+    if (cache) compute(); else loadData();
+  });
+
+  (async () => {
+    HOLDINGS = await window.uniqueHoldings();   // prompts for password once per session
+    loadData();
+  })();
+</script>
+</body>
+</html>

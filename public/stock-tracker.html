@@ -1,0 +1,576 @@
+<!DOCTYPE html><script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Stock Investment Tracker",
+  "schemaVersion": 1,
+  "description": "Stock portfolio tracker pre-loaded with holdings from Google Sheet. Shows market value, P&L, allocation donut chart, and P&L bar chart. Avg cost and current price are editable inline."
+}
+</script>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Investment Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<script src="portfolio.js"></script>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    padding: 20px;
+    font-size: 14px;
+  }
+
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; color: #1d1d1f; }
+  .subtitle { font-size: 12px; color: #6e6e73; margin-bottom: 18px; }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+  }
+
+  .card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #6e6e73; margin-bottom: 5px; }
+  .card-value { font-size: 20px; font-weight: 700; color: #1d1d1f; }
+  .card-value.positive { color: #34c759; }
+  .card-value.negative { color: #ff3b30; }
+
+  .table-wrap {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+
+  thead th {
+    background: #f5f5f7;
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6e6e73;
+    border-bottom: 1px solid #e5e5ea;
+  }
+
+  thead th:not(:first-child) { text-align: right; }
+  thead th:last-child { text-align: center; }
+
+  tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f2f2f7;
+    vertical-align: middle;
+  }
+
+  tbody td:not(:first-child) { text-align: right; }
+  tbody td:last-child { text-align: center; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #fafafa; }
+
+  .ticker { font-weight: 700; font-size: 14px; }
+  .company { font-size: 11px; color: #6e6e73; margin-top: 1px; }
+  .tag { font-size: 10px; background: #e5e5ea; color: #3a3a3c; padding: 1px 5px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .badge.positive { background: #d1f5da; color: #1a7a35; }
+  .badge.negative { background: #ffe5e5; color: #c0392b; }
+  .badge.neutral { background: #e5e5ea; color: #3a3a3c; }
+
+  .edit-input {
+    width: 86px;
+    padding: 4px 7px;
+    border: 1px solid #d1d1d6;
+    border-radius: 6px;
+    font-size: 12px;
+    text-align: right;
+    font-family: inherit;
+    background: #f9f9fb;
+    outline: none;
+  }
+
+  .edit-input:focus { border-color: #007aff; background: #fff; }
+
+  /* Add form */
+  .add-form {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    margin-bottom: 20px;
+  }
+
+  .add-form h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+
+  .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+
+  .form-group label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #6e6e73; }
+
+  .form-group input {
+    padding: 6px 10px;
+    border: 1px solid #d1d1d6;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #f9f9fb;
+    width: 120px;
+    outline: none;
+  }
+
+  .form-group input:focus { border-color: #007aff; background: #fff; }
+  .form-group input[name="ticker"] { width: 75px; text-transform: uppercase; }
+  .form-group input[name="shares"], .form-group input[name="cost"], .form-group input[name="price"] { width: 100px; }
+
+  .btn {
+    padding: 7px 14px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.82; }
+  .btn-primary { background: #007aff; color: #fff; }
+  .btn-danger { background: transparent; color: #ff3b30; border: 1px solid #ff3b30; padding: 3px 9px; font-size: 11px; }
+
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  .chart-wrap {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+  }
+
+  .chart-wrap h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+
+  .empty-state { text-align: center; padding: 28px; color: #6e6e73; font-size: 13px; }
+  .note { font-size: 11px; color: #8e8e93; margin-top: 6px; }
+
+  .last-updated { font-size: 11px; color: #8e8e93; text-align: right; margin-bottom: 12px; }
+
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .btn[disabled] { opacity: 0.55; cursor: progress; }
+  #refresh-status { font-size: 11px; color: #8e8e93; }
+  #refresh-status.error { color: #c0392b; }
+</style>
+</head>
+<body>
+<h1>📈 Stock Investment Tracker</h1>
+<p class="subtitle">Click “Refresh Prices” to pull live market quotes, or edit current prices inline in the table</p>
+
+<div class="toolbar">
+  <button class="btn btn-primary" id="refresh-btn" onclick="refreshPrices()">🔄 Refresh Prices</button>
+  <span id="refresh-status"></span>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Total Invested</div>
+    <div class="card-value" id="total-cost">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Current Value</div>
+    <div class="card-value" id="total-value">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Total P&L ($)</div>
+    <div class="card-value" id="total-pnl">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Total P&L (%)</div>
+    <div class="card-value" id="total-pnl-pct">—</div>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Stock</th>
+        <th>Shares</th>
+        <th>Cost Basis ($)</th>
+        <th>Current Price ($)</th>
+        <th>Market Value</th>
+        <th>P&L ($)</th>
+        <th>P&L (%)</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="holdings-body"></tbody>
+  </table>
+</div>
+
+<div class="add-form">
+  <h2>Add Position</h2>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Ticker</label>
+      <input name="ticker" placeholder="AAPL" maxlength="8" />
+    </div>
+    <div class="form-group">
+      <label>Company</label>
+      <input name="company" placeholder="Apple Inc." style="width:140px" />
+    </div>
+    <div class="form-group">
+      <label>Shares</label>
+      <input name="shares" type="number" placeholder="100" min="0" />
+    </div>
+    <div class="form-group">
+      <label>Cost Basis / Share</label>
+      <input name="cost" type="number" placeholder="150.00" min="0" step="0.01" />
+    </div>
+    <div class="form-group">
+      <label>Current Price (optional)</label>
+      <input name="price" type="number" placeholder="auto-fetched" min="0" step="0.01" />
+    </div>
+    <div class="form-group">
+      <label>Tag (optional)</label>
+      <input name="tag" placeholder="ESPP / RSU" style="width:110px" />
+    </div>
+    <button class="btn btn-primary" onclick="addPosition()">Add</button>
+  </div>
+  <p class="note">Ticker, Shares, and Cost Basis are required. Leave Current Price blank to fetch it live. New positions are saved automatically in this browser.</p>
+</div>
+
+<div class="chart-row">
+  <div class="chart-wrap">
+    <h2>Portfolio Allocation (by Value)</h2>
+    <canvas id="alloc-chart" height="240"></canvas>
+  </div>
+  <div class="chart-wrap">
+    <h2>P&L by Position</h2>
+    <canvas id="pnl-chart" height="240"></canvas>
+  </div>
+</div>
+
+<script>
+  // Holdings come from the shared encrypted store; getPortfolio() prompts for
+  // the password (once per session) and returns decrypted/local data.
+  let positions = [];
+  let nextId = 1;
+  let allocChart = null;
+  let pnlChart = null;
+
+  function fmt(n) {
+    return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  async function addPosition() {
+    const ticker = document.querySelector('input[name="ticker"]').value.trim().toUpperCase();
+    const company = document.querySelector('input[name="company"]').value.trim();
+    const shares = parseFloat(document.querySelector('input[name="shares"]').value);
+    const cost = parseFloat(document.querySelector('input[name="cost"]').value);
+    const priceRaw = document.querySelector('input[name="price"]').value;
+    const tag = document.querySelector('input[name="tag"]').value.trim();
+
+    if (!ticker || isNaN(shares) || shares <= 0 || isNaN(cost) || cost < 0) {
+      alert('Please fill in Ticker, Shares, and Cost Basis.');
+      return;
+    }
+
+    // Current price is optional — auto-fetched when left blank. Until then we
+    // seed it with the cost basis so the row is valid (and saved) immediately.
+    let price = parseFloat(priceRaw);
+    const autoPrice = isNaN(price) || price <= 0;
+    if (autoPrice) price = cost;
+
+    const pos = { ticker, company, shares, cost, price, tag, id: nextId++ };
+    positions.push(pos);
+
+    ['ticker','company','shares','cost','price','tag'].forEach(n => {
+      document.querySelector(`input[name="${n}"]`).value = '';
+    });
+
+    render(); // persists immediately, so the new position + cost are remembered
+
+    if (autoPrice) {
+      const btn = document.querySelector('.add-form .btn-primary');
+      const label = btn.textContent;
+      btn.disabled = true; btn.textContent = '⏳ Fetching price…';
+      const live = await fetchQuote(ticker);
+      if (live != null) { pos.price = live; render(); }
+      btn.disabled = false; btn.textContent = label;
+    }
+  }
+
+  function updateField(id, field, val) {
+    const p = positions.find(p => p.id === id);
+    if (p) {
+      const v = parseFloat(val);
+      if (!isNaN(v) && v >= 0) p[field] = v;
+      render();
+    }
+  }
+
+  // Persist each keystroke immediately (no re-render, so typing isn't disrupted).
+  // Guards against losing the latest edit if the tab/iframe is closed before blur.
+  function liveSave(id, field, val) {
+    const p = positions.find(p => p.id === id);
+    if (!p) return;
+    const v = parseFloat(val);
+    if (!isNaN(v) && v >= 0) { p[field] = v; savePortfolio(positions); }
+  }
+
+  function removePosition(id) {
+    positions = positions.filter(p => p.id !== id);
+    render();
+  }
+
+  function render() {
+    savePortfolio(positions); // keep shared store in sync for the vs Market page
+    const tbody = document.getElementById('holdings-body');
+
+    if (positions.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No positions — add one above.</td></tr>';
+      ['total-cost','total-value','total-pnl','total-pnl-pct'].forEach(id => {
+        document.getElementById(id).textContent = '—';
+        document.getElementById(id).className = 'card-value';
+      });
+      if (allocChart) { allocChart.destroy(); allocChart = null; }
+      if (pnlChart) { pnlChart.destroy(); pnlChart = null; }
+      return;
+    }
+
+    tbody.innerHTML = positions.map(p => {
+      const value = p.shares * p.price;
+      const invested = p.shares * p.cost;
+      const pnl = value - invested;
+      const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
+      const cls = pnl > 0.005 ? 'positive' : pnl < -0.005 ? 'negative' : 'neutral';
+      const sign = pnl > 0 ? '+' : '';
+
+      return `
+        <tr>
+          <td>
+            <div class="ticker">${p.ticker}${p.tag ? `<span class="tag">${p.tag}</span>` : ''}</div>
+            ${p.company ? `<div class="company">${p.company}</div>` : ''}
+          </td>
+          <td>${p.shares.toLocaleString()}</td>
+          <td>
+            <input class="edit-input" type="number" value="${p.cost.toFixed(2)}" min="0" step="0.01"
+              oninput="liveSave(${p.id}, 'cost', this.value)"
+              onchange="updateField(${p.id}, 'cost', this.value)"
+              onblur="updateField(${p.id}, 'cost', this.value)" />
+          </td>
+          <td>
+            <input class="edit-input" type="number" value="${p.price.toFixed(2)}" min="0" step="0.01"
+              oninput="liveSave(${p.id}, 'price', this.value)"
+              onchange="updateField(${p.id}, 'price', this.value)"
+              onblur="updateField(${p.id}, 'price', this.value)" />
+          </td>
+          <td>${fmt(value)}</td>
+          <td><span class="badge ${cls}">${sign}${fmt(pnl)}</span></td>
+          <td><span class="badge ${cls}">${sign}${pnlPct.toFixed(2)}%</span></td>
+          <td><button class="btn btn-danger" onclick="removePosition(${p.id})">✕</button></td>
+        </tr>
+      `;
+    }).join('');
+
+    // Summary
+    const totalCost = positions.reduce((s, p) => s + p.shares * p.cost, 0);
+    const totalValue = positions.reduce((s, p) => s + p.shares * p.price, 0);
+    const totalPnl = totalValue - totalCost;
+    const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+    const pnlCls = totalPnl >= 0 ? 'positive' : 'negative';
+
+    document.getElementById('total-cost').textContent = fmt(totalCost);
+    document.getElementById('total-value').textContent = fmt(totalValue);
+
+    const pnlEl = document.getElementById('total-pnl');
+    pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + fmt(totalPnl);
+    pnlEl.className = `card-value ${pnlCls}`;
+
+    const pnlPctEl = document.getElementById('total-pnl-pct');
+    pnlPctEl.textContent = (totalPnlPct >= 0 ? '+' : '') + totalPnlPct.toFixed(2) + '%';
+    pnlPctEl.className = `card-value ${pnlCls}`;
+
+    // Allocation chart
+    const colors = ['#007aff','#34c759','#ff9500','#ff3b30','#af52de','#5ac8fa','#ffcc00','#ff6b6b','#4ecdc4','#45b7d1','#a29bfe'];
+
+    // Aggregate by ticker for chart labels (QUIK ESPP + RSU combined)
+    const aggMap = {};
+    positions.forEach((p, i) => {
+      const key = p.ticker + (p.tag ? ` (${p.tag})` : '');
+      aggMap[key] = (aggMap[key] || 0) + p.shares * p.price;
+    });
+    const aggLabels = Object.keys(aggMap);
+    const aggValues = Object.values(aggMap);
+
+    if (allocChart) allocChart.destroy();
+    allocChart = new Chart(document.getElementById('alloc-chart'), {
+      type: 'doughnut',
+      data: {
+        labels: aggLabels,
+        datasets: [{
+          data: aggValues,
+          backgroundColor: aggLabels.map((_, i) => colors[i % colors.length]),
+          borderWidth: 2,
+          borderColor: '#fff',
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'right', labels: { font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                return ` ${fmt(ctx.parsed)} (${pct}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // P&L bar chart
+    const pnlLabels = positions.map(p => p.ticker + (p.tag ? ` (${p.tag})` : ''));
+    const pnlValues = positions.map(p => {
+      const pnl = p.shares * p.price - p.shares * p.cost;
+      return parseFloat(pnl.toFixed(2));
+    });
+    const barColors = pnlValues.map(v => v >= 0 ? 'rgba(52, 199, 89, 0.7)' : 'rgba(255, 59, 48, 0.7)');
+
+    if (pnlChart) pnlChart.destroy();
+    pnlChart = new Chart(document.getElementById('pnl-chart'), {
+      type: 'bar',
+      data: {
+        labels: pnlLabels,
+        datasets: [{
+          label: 'P&L ($)',
+          data: pnlValues,
+          backgroundColor: barColors,
+          borderRadius: 5,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: {
+            ticks: {
+              callback: v => '$' + v.toLocaleString()
+            }
+          },
+          x: { ticks: { font: { size: 11 } } }
+        }
+      }
+    });
+  }
+
+  // --- Live price refresh -------------------------------------------------
+  // Yahoo Finance sends no CORS headers, so requests go through public proxies.
+  // r.jina.ai (x-respond-with:text -> raw JSON) is primary; rest are fallbacks.
+  const PROXIES = [
+    { build: u => ({ target: 'https://r.jina.ai/' + u, opts: { cache: 'no-store', headers: { 'x-respond-with': 'text' } } }) },
+    { build: u => ({ target: u, opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
+  ];
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  async function getChartJson(url) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      for (const p of PROXIES) {
+        try {
+          const { target, opts } = p.build(url);
+          const res = await fetch(target, opts);
+          if (!res.ok) continue;
+          const text = await res.text();
+          let data;
+          try { data = JSON.parse(text); } catch (e) { continue; }
+          if (data && data.data && typeof data.data.content === 'string') {
+            try { data = JSON.parse(data.data.content); } catch (e) { continue; }
+          }
+          if (data && data.chart && data.chart.result && data.chart.result[0]) return data;
+        } catch (e) { /* next proxy */ }
+      }
+      await sleep(700);
+    }
+    return null;
+  }
+
+  async function fetchQuote(ticker) {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
+    const data = await getChartJson(url);
+    const meta = data?.chart?.result?.[0]?.meta;
+    const price = meta && (meta.regularMarketPrice ?? meta.previousClose);
+    return (typeof price === 'number' && price > 0) ? price : null;
+  }
+
+  async function refreshPrices() {
+    const btn = document.getElementById('refresh-btn');
+    const status = document.getElementById('refresh-status');
+    if (positions.length === 0) { status.textContent = 'No positions to update.'; return; }
+
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = '⏳ Fetching…';
+    status.className = '';
+
+    const tickers = [...new Set(positions.map(p => p.ticker))];
+    status.textContent = `Fetching ${tickers.length} tickers…`;
+
+    const results = await Promise.all(tickers.map(async t => ({ t, price: await fetchQuote(t) })));
+
+    let ok = 0;
+    const failed = [];
+    results.forEach(({ t, price }) => {
+      if (price != null) {
+        positions.forEach(p => { if (p.ticker === t) p.price = price; });
+        ok++;
+      } else {
+        failed.push(t);
+      }
+    });
+
+    render();
+
+    btn.disabled = false;
+    btn.textContent = label;
+    const now = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (ok === 0) {
+      status.className = 'error';
+      status.textContent = `Couldn’t fetch prices (network/proxy blocked). Edit manually in the table.`;
+    } else {
+      status.className = failed.length ? 'error' : '';
+      status.textContent = `Updated ${ok}/${tickers.length} as of ${now}` + (failed.length ? ` · failed: ${failed.join(', ')}` : '');
+    }
+  }
+
+  (async () => {
+    positions = await getPortfolio();
+    nextId = positions.reduce((m, p) => Math.max(m, p.id || 0), 0) + 1;
+    render();
+  })();
+</script>
+</body>
+</html>
