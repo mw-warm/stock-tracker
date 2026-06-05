@@ -76,12 +76,13 @@
     return showGate();
   };
 
-  // Current portfolio: the user's local edits if present, else decrypted defaults.
+  // Current portfolio: the user's saved edits if any (even an empty list, so
+  // deleting every position sticks), else the decrypted defaults on first run.
   window.getPortfolio = async function () {
     const defaults = await window.unlockDashboard();
     try {
       const raw = localStorage.getItem(window.STORAGE_KEY);
-      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p) && p.length) return p; }
+      if (raw !== null) { const p = JSON.parse(raw); if (Array.isArray(p)) return p; }
     } catch (e) {}
     return defaults.map(x => ({ ...x }));
   };
