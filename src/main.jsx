@@ -17,7 +17,7 @@ function loadScript(src) {
 
 async function start() {
   try {
-    await loadScript(import.meta.env.BASE_URL + 'portfolio.js')
+    await loadScript(import.meta.env.BASE_URL + 'portfolio.js?v=' + __BUILD_ID__)
     if (window.unlockDashboard) await window.unlockDashboard()
   } catch (e) {
     // If the gate fails to load, fall through and render (pages still gate data).

@@ -57,14 +57,14 @@ export default function App() {
       {active === 'stocks' && (
         <iframe
           title="Stock Investment Tracker"
-          src={`${import.meta.env.BASE_URL}stock-tracker.html`}
+          src={`${import.meta.env.BASE_URL}stock-tracker.html?v=${__BUILD_ID__}`}
           style={{ width: '100%', height: 'calc(100vh - 53px)', border: 'none', display: 'block', background: '#f5f5f7' }}
         />
       )}
       {active === 'vsmarket' && (
         <iframe
           title="Stocks vs Market — Weekly"
-          src={`${import.meta.env.BASE_URL}vs-market.html`}
+          src={`${import.meta.env.BASE_URL}vs-market.html?v=${__BUILD_ID__}`}
           style={{ width: '100%', height: 'calc(100vh - 53px)', border: 'none', display: 'block', background: '#f5f5f7' }}
         />
       )}
