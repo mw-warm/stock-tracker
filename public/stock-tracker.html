@@ -215,6 +215,7 @@
         <th>Shares</th>
         <th>Cost Basis ($)</th>
         <th>Current Price ($)</th>
+        <th>Day %</th>
         <th>Market Value</th>
         <th>P&L ($)</th>
         <th>P&L (%)</th>
@@ -275,6 +276,7 @@
   let nextId = 1;
   let allocChart = null;
   let pnlChart = null;
+  const dayChange = {}; // ticker -> today's % change (from last live fetch; not persisted)
 
   function fmt(n) {
     return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -312,8 +314,12 @@
       const btn = document.querySelector('.add-form .btn-primary');
       const label = btn.textContent;
       btn.disabled = true; btn.textContent = '⏳ Fetching price…';
-      const live = await fetchQuote(ticker);
-      if (live != null) { pos.price = live; render(); }
+      const q = await fetchQuote(ticker);
+      if (q && q.price != null) {
+        pos.price = q.price;
+        if (q.changePct != null) dayChange[ticker] = q.changePct;
+        render();
+      }
       btn.disabled = false; btn.textContent = label;
     }
   }
@@ -346,7 +352,7 @@
     const tbody = document.getElementById('holdings-body');
 
     if (positions.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No positions — add one above.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No positions — add one above.</td></tr>';
       ['total-cost','total-value','total-pnl','total-pnl-pct'].forEach(id => {
         document.getElementById(id).textContent = '—';
         document.getElementById(id).className = 'card-value';
@@ -363,6 +369,11 @@
       const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
       const cls = pnl > 0.005 ? 'positive' : pnl < -0.005 ? 'negative' : 'neutral';
       const sign = pnl > 0 ? '+' : '';
+
+      const dc = dayChange[p.ticker];
+      const dayCell = (dc == null)
+        ? '<span style="color:#c7c7cc">—</span>'
+        : `<span class="badge ${dc > 0.005 ? 'positive' : dc < -0.005 ? 'negative' : 'neutral'}">${dc > 0 ? '+' : ''}${dc.toFixed(2)}%</span>`;
 
       return `
         <tr>
@@ -383,6 +394,7 @@
               onchange="updateField(${p.id}, 'price', this.value)"
               onblur="updateField(${p.id}, 'price', this.value)" />
           </td>
+          <td>${dayCell}</td>
           <td>${fmt(value)}</td>
           <td><span class="badge ${cls}">${sign}${fmt(pnl)}</span></td>
           <td><span class="badge ${cls}">${sign}${pnlPct.toFixed(2)}%</span></td>
@@ -518,12 +530,16 @@
     return null;
   }
 
+  // Returns { price, changePct } where changePct is today's % move vs prior close.
   async function fetchQuote(ticker) {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
     const data = await getChartJson(url);
     const meta = data?.chart?.result?.[0]?.meta;
     const price = meta && (meta.regularMarketPrice ?? meta.previousClose);
-    return (typeof price === 'number' && price > 0) ? price : null;
+    if (!(typeof price === 'number' && price > 0)) return null;
+    const prev = meta.chartPreviousClose ?? meta.previousClose;
+    const changePct = (typeof prev === 'number' && prev > 0) ? (price / prev - 1) * 100 : null;
+    return { price, changePct };
   }
 
   async function refreshPrices() {
@@ -539,13 +555,14 @@
     const tickers = [...new Set(positions.map(p => p.ticker))];
     status.textContent = `Fetching ${tickers.length} tickers…`;
 
-    const results = await Promise.all(tickers.map(async t => ({ t, price: await fetchQuote(t) })));
+    const results = await Promise.all(tickers.map(async t => ({ t, q: await fetchQuote(t) })));
 
     let ok = 0;
     const failed = [];
-    results.forEach(({ t, price }) => {
-      if (price != null) {
-        positions.forEach(p => { if (p.ticker === t) p.price = price; });
+    results.forEach(({ t, q }) => {
+      if (q && q.price != null) {
+        positions.forEach(p => { if (p.ticker === t) p.price = q.price; });
+        if (q.changePct != null) dayChange[t] = q.changePct;
         ok++;
       } else {
         failed.push(t);
