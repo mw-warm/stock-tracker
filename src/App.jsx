@@ -3,14 +3,14 @@ import PortfolioProjection from './components/PortfolioProjection.jsx'
 import MillionDollarDashboard from './components/MillionDollarDashboard.jsx'
 
 const NAV = [
-  { id: 'million', label: '$1M Dashboard', sub: 'Full allocation + 5yr projection' },
-  { id: 'boxster', label: '$120k + Boxster', sub: '5yr projection with Porsche' },
   { id: 'stocks', label: '📈 Stock Tracker', sub: 'Live holdings, P&L, allocation' },
   { id: 'vsmarket', label: '📊 vs Market', sub: 'Weekly performance vs benchmark' },
+  { id: 'million', label: '$1M Dashboard', sub: 'Full allocation + 5yr projection' },
+  { id: 'boxster', label: '$120k + Boxster', sub: '5yr projection with Porsche' },
 ]
 
 export default function App() {
-  const [active, setActive] = useState('million')
+  const [active, setActive] = useState('stocks')
 
   return (
     <div style={{ minHeight: '100vh', background: '#080b12', fontFamily: "'DM Mono', 'Courier New', monospace" }}>

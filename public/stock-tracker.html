@@ -617,6 +617,7 @@
     positions = await getPortfolio();
     nextId = positions.reduce((m, p) => Math.max(m, p.id || 0), 0) + 1;
     render();
+    refreshPrices(); // auto-pull live prices + day change on load
   })();
 </script>
 </body>
