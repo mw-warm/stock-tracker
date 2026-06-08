@@ -29,10 +29,11 @@
 
   .cards {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 20px;
   }
+  @media (max-width: 760px) { .cards { grid-template-columns: repeat(2, 1fr); } }
 
   .card {
     background: #fff;
@@ -45,6 +46,7 @@
   .card-value { font-size: 20px; font-weight: 700; color: #1d1d1f; }
   .card-value.positive { color: #34c759; }
   .card-value.negative { color: #ff3b30; }
+  .card-value .pct { font-size: 13px; font-weight: 600; }
 
   .table-wrap {
     background: #fff;
@@ -196,6 +198,10 @@
   <div class="card">
     <div class="card-label">Current Value</div>
     <div class="card-value" id="total-value">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Today's Change</div>
+    <div class="card-value" id="total-day">—</div>
   </div>
   <div class="card">
     <div class="card-label">Total P&L ($)</div>
@@ -353,7 +359,7 @@
 
     if (positions.length === 0) {
       tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No positions — add one above.</td></tr>';
-      ['total-cost','total-value','total-pnl','total-pnl-pct'].forEach(id => {
+      ['total-cost','total-value','total-day','total-pnl','total-pnl-pct'].forEach(id => {
         document.getElementById(id).textContent = '—';
         document.getElementById(id).className = 'card-value';
       });
@@ -412,6 +418,30 @@
 
     document.getElementById('total-cost').textContent = fmt(totalCost);
     document.getElementById('total-value').textContent = fmt(totalValue);
+
+    // Today's change (from positions that have a live day % from the last refresh)
+    let dayChange$ = 0, valueWithDay = 0, dayKnown = false;
+    positions.forEach(p => {
+      const dc = dayChange[p.ticker];
+      if (dc != null) {
+        const v = p.shares * p.price;
+        dayChange$ += v - v / (1 + dc / 100); // value gained today
+        valueWithDay += v;
+        dayKnown = true;
+      }
+    });
+    const dayEl = document.getElementById('total-day');
+    if (!dayKnown) {
+      dayEl.textContent = '—';
+      dayEl.className = 'card-value';
+    } else {
+      const prevVal = valueWithDay - dayChange$;
+      const dayPctTotal = prevVal > 0 ? (dayChange$ / prevVal) * 100 : 0;
+      const dCls = dayChange$ >= 0 ? 'positive' : 'negative';
+      const s = dayChange$ >= 0 ? '+' : '';
+      dayEl.innerHTML = `${s}${fmt(dayChange$)} <span class="pct">(${s}${dayPctTotal.toFixed(2)}%)</span>`;
+      dayEl.className = `card-value ${dCls}`;
+    }
 
     const pnlEl = document.getElementById('total-pnl');
     pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + fmt(totalPnl);
