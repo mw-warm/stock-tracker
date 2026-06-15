@@ -5,6 +5,7 @@
 (function () {
   window.STORAGE_KEY = 'stocktracker.positions.v2';
   const SESSION_KEY = 'stocktracker.unlocked.v2';
+  const PW_KEY = 'stocktracker.pw.v2'; // password cached for this session (enables encrypted export)
 
   // AES-GCM encrypted holdings (password set by the owner; regenerate with the
   // local encrypt tool to change password/data). No plaintext is shipped.
@@ -15,12 +16,13 @@
   };
 
   const b64dec = str => Uint8Array.from(atob(str), c => c.charCodeAt(0));
+  const b64enc = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
 
   async function deriveKey(password, salt) {
     const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
     return crypto.subtle.deriveKey(
       { name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
-      base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+      base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
     );
   }
 
@@ -55,6 +57,7 @@
         try {
           const data = await decryptDefaults(pw.value);
           try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); } catch (e) {}
+          try { sessionStorage.setItem(PW_KEY, pw.value); } catch (e) {}
           ov.remove();
           resolve(data);
         } catch (e) {
@@ -89,6 +92,29 @@
 
   window.savePortfolio = function (positions) {
     try { localStorage.setItem(window.STORAGE_KEY, JSON.stringify(positions)); } catch (e) {}
+  };
+
+  // Password typed to unlock this session (for encrypted export). May be null.
+  window.sessionPassword = function () {
+    try { return sessionStorage.getItem(PW_KEY); } catch (e) { return null; }
+  };
+
+  // Encrypt an array -> { salt, iv, ct } (same scheme as the baked-in blob).
+  window.encryptData = async function (dataArray, password) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveKey(password, salt);
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(dataArray)));
+    return { salt: b64enc(salt), iv: b64enc(iv), ct: b64enc(ct) };
+  };
+
+  // Decrypt a { salt, iv, ct } blob with a password -> array (throws if wrong).
+  window.decryptData = async function (blob, password) {
+    const key = await deriveKey(password, b64dec(blob.salt));
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64dec(blob.iv) }, key, b64dec(blob.ct));
+    const data = JSON.parse(new TextDecoder().decode(plain));
+    if (!Array.isArray(data)) throw new Error('Not a portfolio file');
+    return data;
   };
 
   // Unique tickers (first company name wins) — drives the vs Market page.

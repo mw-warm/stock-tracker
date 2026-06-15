@@ -187,6 +187,9 @@
 
 <div class="toolbar">
   <button class="btn btn-primary" id="refresh-btn" onclick="refreshPrices()">🔄 Refresh Prices</button>
+  <button class="btn" style="background:#e5e5ea;color:#1d1d1f" onclick="exportBackup()">⬇️ Export backup</button>
+  <button class="btn" style="background:#e5e5ea;color:#1d1d1f" onclick="document.getElementById('import-file').click()">⬆️ Import backup</button>
+  <input id="import-file" type="file" accept="application/json,.json" style="display:none" onchange="importBackup(this.files[0])" />
   <span id="refresh-status"></span>
 </div>
 
@@ -611,6 +614,57 @@
       status.className = failed.length ? 'error' : '';
       status.textContent = `Updated ${ok}/${tickers.length} as of ${now}` + (failed.length ? ` · failed: ${failed.join(', ')}` : '');
     }
+  }
+
+  function downloadFile(name, text) {
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // Export current holdings as an encrypted backup file (portable across devices).
+  async function exportBackup() {
+    const status = document.getElementById('refresh-status');
+    const pw = window.sessionPassword() || prompt('Enter your dashboard password to encrypt the backup:');
+    if (!pw) return;
+    try {
+      const enc = await window.encryptData(positions, pw);
+      const payload = JSON.stringify({ app: 'stock-tracker', version: 2, exported: new Date().toISOString(), enc }, null, 2);
+      downloadFile(`stock-portfolio-${new Date().toISOString().slice(0, 10)}.json`, payload);
+      status.className = ''; status.textContent = `Exported ${positions.length} positions to an encrypted backup file.`;
+    } catch (e) {
+      status.className = 'error'; status.textContent = 'Export failed: ' + (e.message || e);
+    }
+  }
+
+  // Import holdings from an encrypted backup file and save them.
+  async function importBackup(file) {
+    const status = document.getElementById('refresh-status');
+    const input = document.getElementById('import-file');
+    if (!file) return;
+    try {
+      const obj = JSON.parse(await file.text());
+      const blob = obj.enc || obj; // accept the wrapper or a raw {salt,iv,ct}
+      if (!blob || !blob.ct) throw new Error('Not a valid backup file');
+      let data;
+      try {
+        data = await window.decryptData(blob, window.sessionPassword() || '');
+      } catch (e) {
+        const pw = prompt('Enter the password for this backup file:');
+        if (!pw) { input.value = ''; return; }
+        data = await window.decryptData(blob, pw);
+      }
+      if (!confirm(`Import ${data.length} positions from this backup? This replaces your current list.`)) { input.value = ''; return; }
+      positions = data;
+      nextId = positions.reduce((m, p) => Math.max(m, p.id || 0), 0) + 1;
+      render();
+      status.className = ''; status.textContent = `Imported ${positions.length} positions from backup.`;
+    } catch (e) {
+      status.className = 'error'; status.textContent = 'Import failed: ' + (e.message || e);
+    }
+    input.value = '';
   }
 
   (async () => {
