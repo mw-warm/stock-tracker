@@ -537,10 +537,25 @@
     { build: u => ({ target: 'https://r.jina.ai/' + u, opts: { cache: 'no-store', headers: { 'x-respond-with': 'text' } } }) },
     { build: u => ({ target: u, opts: { cache: 'no-store' } }) },
     { build: u => ({ target: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://api.allorigins.win/get?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
     { build: u => ({ target: 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://thingproxy.freeboard.io/fetch/' + u, opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://corsproxy.io/?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
   ];
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // Some proxies wrap the payload; unwrap common envelopes then look for .chart
+  function unwrapChart(text) {
+    let data;
+    try { data = JSON.parse(text); } catch (e) { return null; }
+    if (data && typeof data.contents === 'string') {           // allorigins /get
+      try { data = JSON.parse(data.contents); } catch (e) { return null; }
+    } else if (data && data.data && typeof data.data.content === 'string') { // jina default
+      try { data = JSON.parse(data.data.content); } catch (e) { return null; }
+    }
+    return (data && data.chart && data.chart.result && data.chart.result[0]) ? data : null;
+  }
 
   async function getChartJson(url) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -549,13 +564,8 @@
           const { target, opts } = p.build(url);
           const res = await fetch(target, opts);
           if (!res.ok) continue;
-          const text = await res.text();
-          let data;
-          try { data = JSON.parse(text); } catch (e) { continue; }
-          if (data && data.data && typeof data.data.content === 'string') {
-            try { data = JSON.parse(data.data.content); } catch (e) { continue; }
-          }
-          if (data && data.chart && data.chart.result && data.chart.result[0]) return data;
+          const data = unwrapChart(await res.text());
+          if (data) return data;
         } catch (e) { /* next proxy */ }
       }
       await sleep(700);
@@ -609,8 +619,9 @@
     const now = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     if (ok === 0) {
       status.className = 'error';
-      status.textContent = `Couldn’t fetch prices (network/proxy blocked). Edit manually in the table.`;
+      status.textContent = `Live prices unavailable right now — showing your last saved prices. Tap “Refresh Prices” to retry.`;
     } else {
+      try { sessionStorage.setItem('stocktracker.refreshed.v2', '1'); } catch (e) {} // got a good refresh this session
       status.className = failed.length ? 'error' : '';
       status.textContent = `Updated ${ok}/${tickers.length} as of ${now}` + (failed.length ? ` · failed: ${failed.join(', ')}` : '');
     }
@@ -671,7 +682,10 @@
     positions = await getPortfolio();
     nextId = positions.reduce((m, p) => Math.max(m, p.id || 0), 0) + 1;
     render();
-    refreshPrices(); // auto-pull live prices + day change on load
+    // Auto-refresh once per session only (conserves the free proxy quota).
+    let refreshedThisSession = false;
+    try { refreshedThisSession = sessionStorage.getItem('stocktracker.refreshed.v2') === '1'; } catch (e) {}
+    if (!refreshedThisSession) refreshPrices();
   })();
 </script>
 </body>

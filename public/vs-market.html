@@ -139,7 +139,10 @@
     { build: u => ({ target: 'https://r.jina.ai/' + u, opts: { cache: 'no-store', headers: { 'x-respond-with': 'text' } } }) },
     { build: u => ({ target: u, opts: { cache: 'no-store' } }) },
     { build: u => ({ target: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://api.allorigins.win/get?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
     { build: u => ({ target: 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://thingproxy.freeboard.io/fetch/' + u, opts: { cache: 'no-store' } }) },
+    { build: u => ({ target: 'https://corsproxy.io/?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
   ];
 
   let cumChart, alphaChart, winrateChart;
@@ -150,6 +153,18 @@
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+  // Some proxies wrap the payload; unwrap common envelopes then look for .chart
+  function unwrapChart(text) {
+    let data;
+    try { data = JSON.parse(text); } catch (e) { return null; }
+    if (data && typeof data.contents === 'string') {           // allorigins /get
+      try { data = JSON.parse(data.contents); } catch (e) { return null; }
+    } else if (data && data.data && typeof data.data.content === 'string') { // jina default
+      try { data = JSON.parse(data.data.content); } catch (e) { return null; }
+    }
+    return (data && data.chart && data.chart.result && data.chart.result[0]) ? data : null;
+  }
+
   // Fetch a Yahoo chart URL through the proxy chain; returns parsed JSON or null.
   async function getChartJson(url) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -158,14 +173,8 @@
           const { target, opts } = p.build(url);
           const res = await fetch(target, opts);
           if (!res.ok) continue;
-          const text = await res.text();
-          let data;
-          try { data = JSON.parse(text); } catch (e) { continue; }
-          // Safety: unwrap jina's default envelope if x-respond-with was ignored.
-          if (data && data.data && typeof data.data.content === 'string') {
-            try { data = JSON.parse(data.data.content); } catch (e) { continue; }
-          }
-          if (data && data.chart && data.chart.result && data.chart.result[0]) return data;
+          const data = unwrapChart(await res.text());
+          if (data) return data;
         } catch (e) { /* next proxy */ }
       }
       await sleep(700); // brief pause before retrying flaky proxies
