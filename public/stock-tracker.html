@@ -791,6 +791,7 @@
     positions = await getPortfolio();
     nextId = positions.reduce((m, p) => Math.max(m, p.id || 0), 0) + 1;
     render();
+    window.__syncReady = true; // from here on, user changes push to the cloud
     // Auto-refresh once per session only (conserves the free proxy quota).
     let refreshedThisSession = false;
     try { refreshedThisSession = sessionStorage.getItem('stocktracker.refreshed.v2') === '1'; } catch (e) {}

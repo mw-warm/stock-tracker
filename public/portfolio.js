@@ -79,19 +79,76 @@
     return showGate();
   };
 
-  // Current portfolio: the user's saved edits if any (even an empty list, so
-  // deleting every position sticks), else the decrypted defaults on first run.
+  // --- Cross-device sync via a Cloudflare Worker (stores encrypted blob only) ---
+  window.SYNC = {
+    url: 'https://stock-sync.mw-c49.workers.dev',
+    token: 's-D4CVP8aDJKtsrFwh2BFkYc12T3aUlokYFsQjmXTVk',
+  };
+
+  async function cloudGet() {
+    if (!window.SYNC || !window.SYNC.url) return { status: 'error' };
+    try {
+      const res = await fetch(window.SYNC.url, { cache: 'no-store' });
+      if (!res.ok) return { status: 'error' };
+      const text = (await res.text()).trim();
+      if (!text) return { status: 'empty' };
+      const blob = JSON.parse(text);
+      return (blob && blob.ct) ? { status: 'data', blob } : { status: 'empty' };
+    } catch (e) { return { status: 'error' }; }
+  }
+
+  async function cloudPut(positions) {
+    const pw = window.sessionPassword();
+    if (!pw || !window.SYNC || !window.SYNC.url) return;
+    try {
+      const blob = await window.encryptData(positions, pw);
+      await fetch(window.SYNC.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Write-Token': window.SYNC.token || '' },
+        body: JSON.stringify(blob),
+      });
+    } catch (e) { /* offline / worker down — local copy still saved */ }
+  }
+
+  let cloudTimer = null;
+  function cloudPushDebounced(positions) {
+    clearTimeout(cloudTimer);
+    const snapshot = JSON.parse(JSON.stringify(positions));
+    cloudTimer = setTimeout(() => cloudPut(snapshot), 1000);
+  }
+
+  // Current portfolio. Priority: cloud (cross-device source of truth) > local
+  // edits > decrypted defaults. Cloud is seeded on first run if reachable+empty.
   window.getPortfolio = async function () {
     const defaults = await window.unlockDashboard();
+    const pw = window.sessionPassword();
+
+    const cloud = await cloudGet();
+    if (cloud.status === 'data' && pw) {
+      try {
+        const data = await window.decryptData(cloud.blob, pw);
+        if (Array.isArray(data)) {
+          try { localStorage.setItem(window.STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+          return data;
+        }
+      } catch (e) { /* cloud blob not decryptable with this password — ignore */ }
+    }
+
+    let local = null;
     try {
       const raw = localStorage.getItem(window.STORAGE_KEY);
-      if (raw !== null) { const p = JSON.parse(raw); if (Array.isArray(p)) return p; }
+      if (raw !== null) { const p = JSON.parse(raw); if (Array.isArray(p)) local = p; }
     } catch (e) {}
-    return defaults.map(x => ({ ...x }));
+    const result = local || defaults.map(x => ({ ...x }));
+
+    // Seed the cloud only when it's reachable but empty (never overwrite on a read error).
+    if (cloud.status === 'empty' && pw) cloudPut(result);
+    return result;
   };
 
   window.savePortfolio = function (positions) {
     try { localStorage.setItem(window.STORAGE_KEY, JSON.stringify(positions)); } catch (e) {}
+    if (window.__syncReady) cloudPushDebounced(positions); // push user changes to the cloud
   };
 
   // Password typed to unlock this session (for encrypted export). May be null.
