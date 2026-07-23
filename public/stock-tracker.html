@@ -12,7 +12,6 @@
 <title>Stock Investment Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
 <script src="portfolio.js"></script>
-<script src="descriptions.js"></script>
 <style>
   :root { color-scheme: light; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -86,8 +85,6 @@
 
   .ticker { font-weight: 700; font-size: 14px; }
   .company { font-size: 11px; color: #6e6e73; margin-top: 1px; }
-  .descr { font-size: 11px; color: #8e8e93; margin-top: 3px; max-width: 260px; line-height: 1.35;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .tag { font-size: 10px; background: #e5e5ea; color: #3a3a3c; padding: 1px 5px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
 
   .badge {
@@ -311,8 +308,6 @@
     return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  function escHtml(s) { return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
-  function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;'); }
 
   async function addPosition() {
     const ticker = document.querySelector('input[name="ticker"]').value.trim().toUpperCase();
@@ -350,6 +345,7 @@
       if (q && q.price != null) {
         pos.price = q.price;
         if (q.changePct != null) dayChange[ticker] = q.changePct;
+        if (q.name && !pos.company) pos.company = q.name; // fill in missing name
         render();
       }
       btn.disabled = false; btn.textContent = label;
@@ -479,8 +475,6 @@
       const cls = pnl > 0.005 ? 'positive' : pnl < -0.005 ? 'negative' : 'neutral';
       const sign = pnl > 0 ? '+' : '';
 
-      const desc = p.description || (window.STOCK_DESCRIPTIONS && window.STOCK_DESCRIPTIONS[p.ticker]) || '';
-
       const dc = dayChange[p.ticker];
       const dayCell = (dc == null)
         ? '<span style="color:#c7c7cc">—</span>'
@@ -492,7 +486,6 @@
           <td>
             <div class="ticker">${p.ticker}${p.tag ? `<span class="tag">${p.tag}</span>` : ''}</div>
             ${p.company ? `<div class="company">${p.company}</div>` : ''}
-            ${desc ? `<div class="descr" title="${escAttr(desc)}">${escHtml(desc)}</div>` : ''}
           </td>
           <td>${p.shares.toLocaleString()}</td>
           <td>
@@ -691,7 +684,8 @@
     if (!(typeof price === 'number' && price > 0)) return null;
     const prev = meta.chartPreviousClose ?? meta.previousClose;
     const changePct = (typeof prev === 'number' && prev > 0) ? (price / prev - 1) * 100 : null;
-    return { price, changePct };
+    const name = meta.shortName || meta.longName || '';
+    return { price, changePct, name };
   }
 
   async function refreshPrices() {
@@ -713,7 +707,12 @@
     const failed = [];
     results.forEach(({ t, q }) => {
       if (q && q.price != null) {
-        positions.forEach(p => { if (p.ticker === t) p.price = q.price; });
+        positions.forEach(p => {
+          if (p.ticker === t) {
+            p.price = q.price;
+            if (q.name && !p.company) p.company = q.name; // fill in missing name
+          }
+        });
         if (q.changePct != null) dayChange[t] = q.changePct;
         ok++;
       } else {
