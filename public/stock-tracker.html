@@ -196,6 +196,47 @@
   .btn[disabled] { opacity: 0.55; cursor: progress; }
   #refresh-status { font-size: 11px; color: #8e8e93; }
   #refresh-status.error { color: #c0392b; }
+
+  /* --- Phone layout: turn each table row into a stacked card --- */
+  @media (max-width: 640px) {
+    body { padding: 14px; }
+    h1 { font-size: 19px; }
+
+    .table-wrap { background: transparent; box-shadow: none; border-radius: 0; overflow: visible; }
+    table, tbody { display: block; width: 100%; }
+    thead { display: none; }
+
+    tbody tr {
+      display: block; background: #fff; border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07); padding: 6px 14px; margin-bottom: 12px;
+    }
+    tbody tr:hover { background: #fff; }
+    tbody tr:last-child td { border-bottom: none; } /* reset desktop rule */
+
+    tbody td {
+      display: flex; align-items: center; justify-content: space-between;
+      text-align: right; padding: 9px 0; border-bottom: 1px solid #f2f2f7;
+    }
+    tbody td:last-child { border-bottom: none; }
+    tbody td::before {
+      content: attr(data-label); text-align: left; margin-right: 12px;
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6e6e73; font-weight: 600;
+    }
+
+    /* Stock name = card header (full width, no label) */
+    tbody td.cell-stock { display: block; text-align: left; padding: 4px 0 10px; border-bottom: 1px solid #e5e5ea; }
+    tbody td.cell-stock::before { content: none; }
+    .ticker { font-size: 16px; }
+
+    tbody td .edit-input { width: 110px; }
+    tbody td.cell-actions { padding-top: 10px; }
+    tbody td.cell-actions .drag-handle { display: none; } /* no touch drag; arrows are used */
+    .btn-move { padding: 5px 12px; font-size: 13px; }
+    .btn-danger { padding: 5px 12px; font-size: 13px; }
+
+    .empty-state { display: block; text-align: center; }
+    .empty-state::before { content: none; }
+  }
 </style>
 </head>
 <body>
@@ -483,28 +524,28 @@
       return `
         <tr ondragstart="rowDragStart(event, ${p.id})" ondragover="rowDragOver(event, ${p.id})"
             ondragleave="rowDragLeave(event)" ondrop="rowDrop(event, ${p.id})" ondragend="rowDragEnd(event)">
-          <td>
+          <td class="cell-stock">
             <div class="ticker">${p.ticker}${p.tag ? `<span class="tag">${p.tag}</span>` : ''}</div>
             ${p.company ? `<div class="company">${p.company}</div>` : ''}
           </td>
-          <td>${p.shares.toLocaleString()}</td>
-          <td>
+          <td data-label="Shares">${p.shares.toLocaleString()}</td>
+          <td data-label="Cost Basis">
             <input class="edit-input" type="number" value="${p.cost.toFixed(2)}" min="0" step="0.01"
               oninput="liveSave(${p.id}, 'cost', this.value)"
               onchange="updateField(${p.id}, 'cost', this.value)"
               onblur="updateField(${p.id}, 'cost', this.value)" />
           </td>
-          <td>
+          <td data-label="Current Price">
             <input class="edit-input" type="number" value="${p.price.toFixed(2)}" min="0" step="0.01"
               oninput="liveSave(${p.id}, 'price', this.value)"
               onchange="updateField(${p.id}, 'price', this.value)"
               onblur="updateField(${p.id}, 'price', this.value)" />
           </td>
-          <td>${dayCell}</td>
-          <td>${fmt(value)}</td>
-          <td><span class="badge ${cls}">${sign}${fmt(pnl)}</span></td>
-          <td><span class="badge ${cls}">${sign}${pnlPct.toFixed(2)}%</span></td>
-          <td style="white-space:nowrap">
+          <td data-label="Day %">${dayCell}</td>
+          <td data-label="Market Value">${fmt(value)}</td>
+          <td data-label="P&L ($)"><span class="badge ${cls}">${sign}${fmt(pnl)}</span></td>
+          <td data-label="P&L (%)"><span class="badge ${cls}">${sign}${pnlPct.toFixed(2)}%</span></td>
+          <td class="cell-actions" data-label="Reorder" style="white-space:nowrap">
             <span class="drag-handle" title="Drag to reorder" onmousedown="armDrag(this)">⠿</span>
             <button class="btn-move" title="Move up" ${idx === 0 ? 'disabled' : ''} onclick="movePosition(${p.id}, -1)">▲</button>
             <button class="btn-move" title="Move down" ${idx === positions.length - 1 ? 'disabled' : ''} onclick="movePosition(${p.id}, 1)">▼</button>
