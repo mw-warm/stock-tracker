@@ -300,6 +300,7 @@
         <th>Cost Basis ($)</th>
         <th>Current Price ($)</th>
         <th>Day %</th>
+        <th>Day $</th>
         <th>Market Value</th>
         <th>P&L ($)</th>
         <th>P&L (%)</th>
@@ -522,7 +523,7 @@
     const tbody = document.getElementById('holdings-body');
 
     if (positions.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No positions — add one above.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No positions — add one above.</td></tr>';
       ['total-cost','total-value','total-day','total-pnl','total-pnl-pct'].forEach(id => {
         document.getElementById(id).textContent = '—';
         document.getElementById(id).className = 'card-value';
@@ -545,16 +546,16 @@
         ? '<span style="color:#c7c7cc">—</span>'
         : `<span class="badge ${dc > 0.005 ? 'positive' : dc < -0.005 ? 'negative' : 'neutral'}">${dc > 0 ? '+' : ''}${dc.toFixed(2)}%</span>`;
 
+      // Today's $ change for this position (from the day %)
+      const dayDollar = (dc == null) ? null : p.shares * (p.price - p.price / (1 + dc / 100));
+      const dayDollarCell = (dayDollar == null)
+        ? '<span style="color:#c7c7cc">—</span>'
+        : `<span class="badge ${dayDollar > 0.005 ? 'positive' : dayDollar < -0.005 ? 'negative' : 'neutral'}">${dayDollar >= 0 ? '+' : ''}${fmt(dayDollar)}</span>`;
+
       // Compact summary (phone collapsed view): price · day% · day$
-      let daySummary;
-      if (dc == null) {
-        daySummary = '<span class="sum-day" style="color:#8e8e93">Day —</span>';
-      } else {
-        const prevClose = p.price / (1 + dc / 100);
-        const dayDollar = p.shares * (p.price - prevClose);
-        const dCls = dc >= 0 ? 'positive' : 'negative';
-        daySummary = `<span class="sum-day ${dCls}">${dc >= 0 ? '+' : ''}${dc.toFixed(2)}% · ${dayDollar >= 0 ? '+' : ''}${fmt(dayDollar)}</span>`;
-      }
+      const daySummary = (dc == null)
+        ? '<span class="sum-day" style="color:#8e8e93">Day —</span>'
+        : `<span class="sum-day ${dc >= 0 ? 'positive' : 'negative'}">${dc >= 0 ? '+' : ''}${dc.toFixed(2)}% · ${dayDollar >= 0 ? '+' : ''}${fmt(dayDollar)}</span>`;
 
       return `
         <tr class="${expandedIds.has(p.id) ? 'expanded' : ''}"
@@ -583,6 +584,7 @@
               onblur="updateField(${p.id}, 'price', this.value)" />
           </td>
           <td data-label="Day %">${dayCell}</td>
+          <td data-label="Day $">${dayDollarCell}</td>
           <td data-label="Market Value">${fmt(value)}</td>
           <td data-label="P&L ($)"><span class="badge ${cls}">${sign}${fmt(pnl)}</span></td>
           <td data-label="P&L (%)"><span class="badge ${cls}">${sign}${pnlPct.toFixed(2)}%</span></td>
