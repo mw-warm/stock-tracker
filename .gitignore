@@ -4,3 +4,6 @@ dist/
 *.local
 .env
 .env.local
+
+# exported portfolio backups (keep out of the repo)
+stock-portfolio-*.json
