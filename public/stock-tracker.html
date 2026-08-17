@@ -191,6 +191,24 @@
 
   .chart-wrap h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
 
+  /* Portfolio Insights */
+  .insights-wrap { background: #fff; border-radius: 12px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-top: 20px; }
+  .insights-wrap > h2 { font-size: 15px; font-weight: 700; }
+  .insights-note { font-size: 11px; color: #8e8e93; margin: 3px 0 16px; line-height: 1.4; }
+  .ins-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .ins-grid { grid-template-columns: 1fr; } }
+  .ins-card { background: #f6f8fa; border: 1px solid #eef0f2; border-radius: 10px; padding: 14px 16px; }
+  .ins-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #6e6e73; margin-bottom: 10px; }
+  .ins-stat { font-size: 22px; font-weight: 700; color: #1d1d1f; }
+  .ins-sub { font-size: 12px; color: #6e6e73; margin-top: 2px; }
+  .ins-row { display: flex; align-items: center; gap: 10px; margin: 7px 0; font-size: 12px; }
+  .ins-row .lbl { width: 148px; flex-shrink: 0; color: #3a3a3c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ins-row .barwrap { flex: 1; background: #e5e7eb; border-radius: 5px; height: 8px; overflow: hidden; }
+  .ins-row .bar { height: 100%; background: #007aff; border-radius: 5px; }
+  .ins-row .val { width: 54px; text-align: right; flex-shrink: 0; color: #1d1d1f; font-weight: 600; }
+  .ins-flag { font-size: 12px; color: #3a3a3c; line-height: 1.5; }
+  .ins-flag b { color: #1d1d1f; }
+
   .empty-state { text-align: center; padding: 28px; color: #6e6e73; font-size: 13px; }
   .note { font-size: 11px; color: #8e8e93; margin-top: 6px; }
 
@@ -354,6 +372,12 @@
   </div>
 </div>
 
+<div class="insights-wrap">
+  <h2>📊 Portfolio Insights</h2>
+  <p class="insights-note">Objective metrics computed from your holdings — informational only, not investment advice. Dividend figures are rough estimates based on approximate yields.</p>
+  <div id="insights"></div>
+</div>
+
 <script>
   // Holdings come from the shared encrypted store; getPortfolio() prompts for
   // the password (once per session) and returns decrypted/local data.
@@ -363,6 +387,21 @@
   let pnlChart = null;
   const dayChange = {}; // ticker -> today's % change (from last live fetch; not persisted)
   const expandedIds = new Set(); // phone: which cards are expanded (session-only)
+
+  // Reference data for insights. Yields are rough trailing estimates (not live).
+  const STOCK_META = {
+    AAPL:  { cls: 'US Stock',        sector: 'Technology',              nasdaq100: true,  yield: 0.004 },
+    GOOGL: { cls: 'US Stock',        sector: 'Communication Services',  nasdaq100: true,  yield: 0.005 },
+    IAU:   { cls: 'Commodity — Gold',sector: 'Gold',                    nasdaq100: false, yield: 0 },
+    INTC:  { cls: 'US Stock',        sector: 'Technology (Semis)',      nasdaq100: true,  yield: 0.02 },
+    NVDA:  { cls: 'US Stock',        sector: 'Technology (Semis)',      nasdaq100: true,  yield: 0.0003 },
+    QQQ:   { cls: 'ETF',             sector: 'Nasdaq-100 Index',        nasdaq100: true,  yield: 0.006 },
+    QQQX:  { cls: 'Closed-End Fund', sector: 'Nasdaq-100 Covered Call', nasdaq100: true,  yield: 0.07 },
+    QYLD:  { cls: 'ETF',             sector: 'Nasdaq-100 Covered Call', nasdaq100: true,  yield: 0.12 },
+    QUIK:  { cls: 'US Stock',        sector: 'Technology (Semis)',      nasdaq100: false, yield: 0 },
+  };
+  const UNKNOWN_META = { cls: 'Other / Unclassified', sector: 'Other', nasdaq100: false, yield: null };
+  const metaFor = t => STOCK_META[t] || UNKNOWN_META;
 
   // Phone: tap a card header to expand/collapse it.
   function toggleCard(id) {
@@ -518,8 +557,78 @@
     render();
   }
 
+  function insBar(label, pct) {
+    return `<div class="ins-row"><span class="lbl">${label}</span>` +
+      `<span class="barwrap"><span class="bar" style="width:${Math.max(1, Math.min(100, pct)).toFixed(1)}%"></span></span>` +
+      `<span class="val">${pct.toFixed(1)}%</span></div>`;
+  }
+
+  function renderInsights() {
+    const el = document.getElementById('insights');
+    if (!el) return;
+    const total = positions.reduce((s, p) => s + p.shares * p.price, 0);
+    if (!positions.length || total <= 0) { el.innerHTML = '<div class="ins-flag">Add holdings to see insights.</div>'; return; }
+
+    // Aggregate value by ticker (combines e.g. QUIK ESPP + RSU)
+    const byTicker = {};
+    positions.forEach(p => { byTicker[p.ticker] = (byTicker[p.ticker] || 0) + p.shares * p.price; });
+    const holdings = Object.entries(byTicker).map(([t, v]) => ({ t, v, pct: v / total * 100 })).sort((a, b) => b.v - a.v);
+
+    // Concentration
+    const largest = holdings[0];
+    const top3 = holdings.slice(0, 3).reduce((s, h) => s + h.pct, 0);
+    const concBars = holdings.map(h => insBar(h.t, h.pct)).join('');
+
+    // Group helper for breakdowns
+    const groupBy = keyFn => {
+      const g = {};
+      holdings.forEach(h => { const k = keyFn(h.t); g[k] = (g[k] || 0) + h.v; });
+      return Object.entries(g).map(([k, v]) => ({ k, pct: v / total * 100 })).sort((a, b) => b.pct - a.pct);
+    };
+    const classRows = groupBy(t => metaFor(t).cls).map(x => insBar(x.k, x.pct)).join('');
+    const sectorRows = groupBy(t => metaFor(t).sector).map(x => insBar(x.k, x.pct)).join('');
+
+    // Nasdaq-100 overlap
+    const nasdaqPct = holdings.reduce((s, h) => s + (metaFor(h.t).nasdaq100 ? h.v : 0), 0) / total * 100;
+
+    // Estimated dividend income
+    let divIncome = 0, divBase = 0; const unknownYield = [];
+    holdings.forEach(h => {
+      const y = metaFor(h.t).yield;
+      if (y == null) unknownYield.push(h.t); else { divIncome += h.v * y; divBase += h.v; }
+    });
+    const portYield = divBase > 0 ? divIncome / divBase * 100 : 0;
+
+    el.innerHTML = `
+      <div class="ins-grid">
+        <div class="ins-card">
+          <h3>Concentration</h3>
+          <div class="ins-stat">${largest.pct.toFixed(1)}%</div>
+          <div class="ins-sub">largest position (${largest.t}) · top 3 = ${top3.toFixed(1)}% · ${holdings.length} holdings</div>
+          <div style="margin-top:12px">${concBars}</div>
+        </div>
+        <div class="ins-card">
+          <h3>Asset Class</h3>
+          ${classRows}
+          <h3 style="margin-top:16px">Sector / Theme</h3>
+          ${sectorRows}
+        </div>
+        <div class="ins-card">
+          <h3>Nasdaq-100 Exposure (overlap)</h3>
+          <div class="ins-stat">${nasdaqPct.toFixed(1)}%</div>
+          <div class="ins-sub">of the portfolio is tied to the Nasdaq-100 — combining index funds (QQQ / QQQX / QYLD) and member stocks (AAPL, GOOGL, NVDA, INTC).</div>
+        </div>
+        <div class="ins-card">
+          <h3>Estimated Dividend Income</h3>
+          <div class="ins-stat">${fmt(divIncome)}<span style="font-size:13px;font-weight:600;color:#6e6e73"> / yr</span></div>
+          <div class="ins-sub">≈ ${portYield.toFixed(1)}% yield on income-paying holdings${unknownYield.length ? ' · no yield data for ' + unknownYield.join(', ') : ''}.</div>
+        </div>
+      </div>`;
+  }
+
   function render() {
     savePortfolio(positions); // keep shared store in sync for the vs Market page
+    renderInsights();
     const tbody = document.getElementById('holdings-body');
 
     if (positions.length === 0) {
