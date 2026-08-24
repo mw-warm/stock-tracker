@@ -209,6 +209,25 @@
   .ins-flag { font-size: 12px; color: #3a3a3c; line-height: 1.5; }
   .ins-flag b { color: #1d1d1f; }
 
+  /* Raise Cash calculator */
+  .rc-target { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+  .rc-target label { text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; color: #6e6e73; }
+  .rc-target input { width: 120px; padding: 6px 8px; border: 1px solid #d1d1d6; border-radius: 8px; font-size: 14px; font-family: inherit; text-align: right; outline: none; }
+  .rc-target input:focus { border-color: #007aff; }
+  .rc-row { display: flex; align-items: center; gap: 12px; padding: 10px 2px; border-bottom: 1px solid #f2f2f7; cursor: pointer; }
+  .rc-row:hover { background: #fafafa; }
+  .rc-cb { width: 18px; height: 18px; flex-shrink: 0; cursor: pointer; }
+  .rc-name { font-weight: 700; font-size: 14px; flex: 1; min-width: 0; }
+  .rc-nums { text-align: right; flex-shrink: 0; }
+  .rc-val { display: block; font-weight: 600; }
+  .rc-gain { display: block; font-size: 12px; }
+  .rc-gain.positive { color: #34c759; }
+  .rc-gain.negative { color: #ff3b30; }
+  .rc-summary { margin-top: 14px; padding: 14px 16px; background: #f6f8fa; border: 1px solid #eef0f2; border-radius: 10px; }
+  .rc-summary .big { font-size: 20px; font-weight: 700; }
+  .rc-summary .big.met { color: #34c759; }
+  .rc-summary .big.short { color: #1d1d1f; }
+
   .empty-state { text-align: center; padding: 28px; color: #6e6e73; font-size: 13px; }
   .note { font-size: 11px; color: #8e8e93; margin-top: 6px; }
 
@@ -376,6 +395,17 @@
   <h2>📊 Portfolio Insights</h2>
   <p class="insights-note">Objective metrics computed from your holdings — informational only, not investment advice. Dividend figures are rough estimates based on approximate yields.</p>
   <div id="insights"></div>
+</div>
+
+<div class="insights-wrap" id="raisecash-wrap">
+  <h2>💵 Raise Cash Calculator</h2>
+  <p class="insights-note">Tick holdings to model selling them (whole positions) and see cash raised vs. your target, plus the estimated realized gain (tax-relevant). Objective figures only — not advice. Gains use your average cost basis; confirm the real tax impact (lots, holding period, account type) with a tax professional.</p>
+  <div class="rc-target">
+    <label>Target cash</label>
+    <span>$ <input id="rc-target-input" type="number" value="100000" min="0" step="1000" oninput="updateRaiseTotals()" /></span>
+  </div>
+  <div id="raisecash"></div>
+  <div id="rc-summary" class="rc-summary"></div>
 </div>
 
 <script>
@@ -626,9 +656,65 @@
       </div>`;
   }
 
+  // --- Raise Cash calculator (objective figures; not advice) ---
+  const raiseSelected = new Set(); // position ids ticked to "sell"
+
+  function renderRaiseCash() {
+    const el = document.getElementById('raisecash');
+    if (!el) return;
+    if (!positions.length) { el.innerHTML = '<div class="ins-flag">Add holdings to use the calculator.</div>'; updateRaiseTotals(); return; }
+    const rows = positions.map(p => ({
+      id: p.id, tkr: p.ticker, tag: p.tag,
+      value: p.shares * p.price,
+      gain: p.shares * p.price - p.shares * p.cost,
+      gainPct: p.cost > 0 ? (p.price / p.cost - 1) * 100 : 0,
+    })).sort((a, b) => b.value - a.value);
+
+    el.innerHTML = rows.map(r => {
+      const gcls = r.gain >= 0 ? 'positive' : 'negative';
+      return `<label class="rc-row">
+        <input type="checkbox" class="rc-cb" data-id="${r.id}" data-val="${r.value}" data-gain="${r.gain}" ${raiseSelected.has(r.id) ? 'checked' : ''} onchange="onRcToggle(this)" />
+        <span class="rc-name">${r.tkr}${r.tag ? ` <span class="tag">${r.tag}</span>` : ''}</span>
+        <span class="rc-nums">
+          <span class="rc-val">${fmt(r.value)}</span>
+          <span class="rc-gain ${gcls}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)} (${r.gain >= 0 ? '+' : ''}${r.gainPct.toFixed(1)}%)</span>
+        </span>
+      </label>`;
+    }).join('');
+    updateRaiseTotals();
+  }
+
+  function onRcToggle(cb) {
+    const id = Number(cb.dataset.id);
+    if (cb.checked) raiseSelected.add(id); else raiseSelected.delete(id);
+    updateRaiseTotals();
+  }
+
+  function updateRaiseTotals() {
+    const sumEl = document.getElementById('rc-summary');
+    if (!sumEl) return;
+    const targetEl = document.getElementById('rc-target-input');
+    const target = parseFloat(targetEl && targetEl.value) || 0;
+    let raised = 0, gain = 0, count = 0;
+    document.querySelectorAll('.rc-cb:checked').forEach(cb => {
+      raised += parseFloat(cb.dataset.val) || 0;
+      gain += parseFloat(cb.dataset.gain) || 0;
+      count++;
+    });
+    const pct = target > 0 ? raised / target * 100 : 0;
+    const met = target > 0 && raised >= target;
+    const remaining = Math.max(0, target - raised);
+    sumEl.innerHTML =
+      `<div class="big ${met ? 'met' : 'short'}">${fmt(raised)}<span style="font-size:13px;color:#6e6e73;font-weight:600"> raised${target > 0 ? ` · ${pct.toFixed(0)}% of ${fmt(target)}` : ''}</span></div>` +
+      `<div style="font-size:12px;color:#6e6e73;margin-top:5px">${count} selected · est. realized gain <b style="color:${gain >= 0 ? '#1a7a35' : '#c0392b'}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b>` +
+      (target > 0 ? (met ? ' · <span style="color:#34c759;font-weight:600">target met ✓</span>' : ` · <span style="color:#ff9500;font-weight:600">still need ${fmt(remaining)}</span>`) : '') +
+      `</div>`;
+  }
+
   function render() {
     savePortfolio(positions); // keep shared store in sync for the vs Market page
     renderInsights();
+    renderRaiseCash();
     const tbody = document.getElementById('holdings-body');
 
     if (positions.length === 0) {
