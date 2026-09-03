@@ -26,20 +26,24 @@ export default {
 
     const url = new URL(request.url);
 
-    // --- Live-price proxy (Yahoo Finance only) ---
+    // --- Live-price proxy (Yahoo Finance only), with internal retry ---
     if (url.pathname === '/proxy') {
       const target = url.searchParams.get('url') || '';
       if (!ALLOWED.test(target)) return new Response('Forbidden', { status: 403, headers: cors });
-      try {
-        const r = await fetch(target, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
-          cf: { cacheTtl: 30, cacheEverything: true },
-        });
-        const body = await r.text();
-        return new Response(body, { status: r.status, headers: { ...cors, 'Content-Type': 'application/json' } });
-      } catch (e) {
-        return new Response('Upstream error', { status: 502, headers: cors });
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const r = await fetch(target, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+            cf: { cacheTtl: 20 }, // cache the successful upstream response briefly
+          });
+          const body = await r.text();
+          if (r.ok && body && body.indexOf('"chart"') !== -1) {
+            return new Response(body, { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
+          }
+        } catch (e) { /* retry */ }
+        await new Promise(res => setTimeout(res, 300));
       }
+      return new Response('{"error":"upstream unavailable"}', { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     // --- Encrypted portfolio storage ---
