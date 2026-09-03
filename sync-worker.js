@@ -1,20 +1,19 @@
-// Cloudflare Worker — encrypted portfolio sync for the Stock Tracker.
-// It stores ONE AES-encrypted blob; the server never sees your holdings in
-// plaintext (decryption only happens in your browser, with your password).
+// Cloudflare Worker — encrypted portfolio sync + live-price proxy for the tracker.
 //
-// SETUP (all in the Cloudflare dashboard — no command line):
-//   1. Create a free account at https://dash.cloudflare.com
-//   2. Workers & Pages → Create → Workers → name it (e.g. "stock-sync") → Deploy
-//   3. Open the Worker → Edit code → paste THIS file → Deploy
-//   4. Storage & Databases → KV → Create a namespace (e.g. "PORTFOLIO")
-//   5. Worker → Settings → Bindings → Add → KV namespace:
-//        Variable name:  PORTFOLIO_KV     Namespace: (the one you made)
-//   6. Worker → Settings → Variables and Secrets → Add secret:
-//        Name:  WRITE_TOKEN     Value: (make up a long random string)
-//   7. Copy the Worker URL (like https://stock-sync.YOURNAME.workers.dev)
-//   8. Send me the Worker URL and the WRITE_TOKEN — I'll wire the dashboard to it.
+//  • GET  /                → returns the stored encrypted portfolio blob (KV)
+//  • POST /                → stores the encrypted portfolio blob (needs WRITE_TOKEN)
+//  • GET  /proxy?url=<...>  → fetches a Yahoo Finance URL server-side and returns it
+//                            with CORS headers (so the browser can read live prices)
+//
+// It never sees your holdings in plaintext, and the /proxy endpoint is locked to
+// Yahoo Finance hosts only (not an open proxy).
+//
+// SETUP RECAP (Cloudflare dashboard): Worker with a KV binding named PORTFOLIO_KV
+// and a secret WRITE_TOKEN. To update: open the Worker → Edit code → paste this →
+// Deploy.
 
 const KEY = 'portfolio';
+const ALLOWED = /^https:\/\/query[12]\.finance\.yahoo\.com\//;
 
 export default {
   async fetch(request, env) {
@@ -25,11 +24,29 @@ export default {
     };
     if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
 
+    const url = new URL(request.url);
+
+    // --- Live-price proxy (Yahoo Finance only) ---
+    if (url.pathname === '/proxy') {
+      const target = url.searchParams.get('url') || '';
+      if (!ALLOWED.test(target)) return new Response('Forbidden', { status: 403, headers: cors });
+      try {
+        const r = await fetch(target, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+          cf: { cacheTtl: 30, cacheEverything: true },
+        });
+        const body = await r.text();
+        return new Response(body, { status: r.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+      } catch (e) {
+        return new Response('Upstream error', { status: 502, headers: cors });
+      }
+    }
+
+    // --- Encrypted portfolio storage ---
     if (request.method === 'GET') {
       const val = await env.PORTFOLIO_KV.get(KEY);
       return new Response(val || '', { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
-
     if (request.method === 'POST') {
       if (env.WRITE_TOKEN && request.headers.get('X-Write-Token') !== env.WRITE_TOKEN) {
         return new Response('Forbidden', { status: 403, headers: cors });

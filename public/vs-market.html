@@ -136,13 +136,14 @@
   // proxies. r.jina.ai (with x-respond-with:text -> raw JSON) is the primary;
   // the others are fallbacks in case it's rate-limited or down.
   const PROXIES = [
+    // Primary: your own Cloudflare Worker (reliable). Public proxies are fallbacks.
+    { build: u => ({ target: (window.SYNC && window.SYNC.url ? window.SYNC.url : '') + '/proxy?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
     { build: u => ({ target: 'https://r.jina.ai/' + u, opts: { cache: 'no-store', headers: { 'x-respond-with': 'text' } } }) },
     { build: u => ({ target: u, opts: { cache: 'no-store' } }) },
     { build: u => ({ target: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
     { build: u => ({ target: 'https://api.allorigins.win/get?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
     { build: u => ({ target: 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
     { build: u => ({ target: 'https://thingproxy.freeboard.io/fetch/' + u, opts: { cache: 'no-store' } }) },
-    { build: u => ({ target: 'https://corsproxy.io/?url=' + encodeURIComponent(u), opts: { cache: 'no-store' } }) },
   ];
 
   let cumChart, alphaChart, winrateChart;
