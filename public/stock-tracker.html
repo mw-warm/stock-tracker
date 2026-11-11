@@ -11,6 +11,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stock Investment Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="portfolio.js"></script>
 <style>
   :root { color-scheme: light; }
@@ -197,6 +198,8 @@
   .seg-toggle .seg.active { background: #007aff; color: #fff; }
   .group-input { width: 100px; padding: 4px 7px; border: 1px solid #d1d1d6; border-radius: 6px; font-size: 12px; font-family: inherit; background: #f9f9fb; outline: none; }
   .group-input:focus { border-color: #007aff; background: #fff; }
+  #alloc-wrap { margin-bottom: 20px; }
+  .alloc-canvas-box { position: relative; height: 260px; }
   #alloc-breakdown { margin-top: 12px; border-top: 1px solid #f2f2f7; padding-top: 10px; }
   .alloc-bd-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
   .alloc-bd-row .dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
@@ -341,6 +344,18 @@
   </div>
 </div>
 
+<div class="chart-wrap" id="alloc-wrap">
+  <div class="chart-head">
+    <h2>Portfolio Allocation</h2>
+    <div class="seg-toggle">
+      <button id="alloc-seg-position" class="seg active" onclick="setAllocMode('position')">By position</button>
+      <button id="alloc-seg-group" class="seg" onclick="setAllocMode('group')">By group</button>
+    </div>
+  </div>
+  <div class="alloc-canvas-box"><canvas id="alloc-chart"></canvas></div>
+  <div id="alloc-breakdown"></div>
+</div>
+
 <div class="table-wrap">
   <table>
     <thead>
@@ -400,22 +415,9 @@
   <p class="note">Ticker, Shares, and Cost Basis are required. Leave Current Price blank to fetch it live. New positions are saved automatically in this browser.</p>
 </div>
 
-<div class="chart-row">
-  <div class="chart-wrap">
-    <div class="chart-head">
-      <h2>Portfolio Allocation</h2>
-      <div class="seg-toggle">
-        <button id="alloc-seg-position" class="seg active" onclick="setAllocMode('position')">By position</button>
-        <button id="alloc-seg-group" class="seg" onclick="setAllocMode('group')">By group</button>
-      </div>
-    </div>
-    <canvas id="alloc-chart" height="240"></canvas>
-    <div id="alloc-breakdown"></div>
-  </div>
-  <div class="chart-wrap">
-    <h2>P&L by Position</h2>
-    <canvas id="pnl-chart" height="240"></canvas>
-  </div>
+<div class="chart-wrap" style="margin-top:20px">
+  <h2>P&L by Position</h2>
+  <canvas id="pnl-chart" height="240"></canvas>
 </div>
 
 <div class="insights-wrap">
@@ -939,16 +941,30 @@
           borderColor: '#fff',
         }]
       },
+      plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
       options: {
         responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: 6 },
         plugins: {
-          legend: { position: 'right', labels: { font: { size: 11 } } },
+          legend: { display: false }, // the breakdown list below serves as the legend
+          datalabels: {
+            color: '#fff',
+            font: { size: 12, weight: 'bold' },
+            textStrokeColor: 'rgba(0,0,0,0.25)',
+            textStrokeWidth: 2,
+            formatter: (value, ctx) => {
+              const total = ctx.dataset.data.reduce((a, b) => a + b, 0) || 1;
+              const pct = value / total * 100;
+              return pct >= 4 ? Math.round(pct) + '%' : ''; // hide labels on tiny slices
+            },
+          },
           tooltip: {
             callbacks: {
               label: ctx => {
                 const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
                 const pct = ((ctx.parsed / total) * 100).toFixed(1);
-                return ` ${fmt(ctx.parsed)} (${pct}%)`;
+                return ` ${ctx.label}: ${fmt(ctx.parsed)} (${pct}%)`;
               }
             }
           }
