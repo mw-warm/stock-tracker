@@ -197,6 +197,12 @@
   .seg-toggle .seg.active { background: #007aff; color: #fff; }
   .group-input { width: 100px; padding: 4px 7px; border: 1px solid #d1d1d6; border-radius: 6px; font-size: 12px; font-family: inherit; background: #f9f9fb; outline: none; }
   .group-input:focus { border-color: #007aff; background: #fff; }
+  #alloc-breakdown { margin-top: 12px; border-top: 1px solid #f2f2f7; padding-top: 10px; }
+  .alloc-bd-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+  .alloc-bd-row .dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .alloc-bd-lbl { flex: 1; color: #3a3a3c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alloc-bd-val { color: #8e8e93; white-space: nowrap; flex-shrink: 0; }
+  .alloc-bd-val b { color: #1d1d1f; margin-left: 5px; }
 
   /* Portfolio Insights */
   .insights-wrap { background: #fff; border-radius: 12px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-top: 20px; }
@@ -404,6 +410,7 @@
       </div>
     </div>
     <canvas id="alloc-chart" height="240"></canvas>
+    <div id="alloc-breakdown"></div>
   </div>
   <div class="chart-wrap">
     <h2>P&L by Position</h2>
@@ -764,6 +771,7 @@
       });
       if (allocChart) { allocChart.destroy(); allocChart = null; }
       if (pnlChart) { pnlChart.destroy(); pnlChart = null; }
+      const bd = document.getElementById('alloc-breakdown'); if (bd) bd.innerHTML = '';
       return;
     }
 
@@ -906,6 +914,18 @@
     });
     const aggLabels = Object.keys(aggMap);
     const aggValues = Object.values(aggMap);
+
+    // Text breakdown under the chart (mirrors the donut: label · $ · %)
+    const bdEl = document.getElementById('alloc-breakdown');
+    if (bdEl) {
+      const aggTotal = aggValues.reduce((a, b) => a + b, 0) || 1;
+      bdEl.innerHTML = aggLabels
+        .map((lab, i) => ({ lab, val: aggValues[i], color: colors[i % colors.length] }))
+        .sort((a, b) => b.val - a.val)
+        .map(r => `<div class="alloc-bd-row"><span class="dot" style="background:${r.color}"></span>` +
+          `<span class="alloc-bd-lbl">${escAttr(r.lab)}</span>` +
+          `<span class="alloc-bd-val">${fmt(r.val)}<b>${(r.val / aggTotal * 100).toFixed(1)}%</b></span></div>`).join('');
+    }
 
     if (allocChart) allocChart.destroy();
     allocChart = new Chart(document.getElementById('alloc-chart'), {
