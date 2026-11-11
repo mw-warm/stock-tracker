@@ -339,6 +339,7 @@
         <th>Day %</th>
         <th>Day $</th>
         <th>Market Value</th>
+        <th>Alloc %</th>
         <th>P&L ($)</th>
         <th>P&L (%)</th>
         <th></th>
@@ -718,7 +719,7 @@
     const tbody = document.getElementById('holdings-body');
 
     if (positions.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No positions — add one above.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No positions — add one above.</td></tr>';
       ['total-cost','total-value','total-day','total-pnl','total-pnl-pct'].forEach(id => {
         document.getElementById(id).textContent = '—';
         document.getElementById(id).className = 'card-value';
@@ -728,8 +729,11 @@
       return;
     }
 
+    const portfolioTotal = positions.reduce((s, p) => s + p.shares * p.price, 0) || 1;
+
     tbody.innerHTML = positions.map((p, idx) => {
       const value = p.shares * p.price;
+      const alloc = value / portfolioTotal * 100;
       const invested = p.shares * p.cost;
       const pnl = value - invested;
       const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
@@ -781,6 +785,7 @@
           <td data-label="Day %">${dayCell}</td>
           <td data-label="Day $">${dayDollarCell}</td>
           <td data-label="Market Value">${fmt(value)}</td>
+          <td data-label="Alloc %">${alloc.toFixed(1)}%</td>
           <td data-label="P&L ($)"><span class="badge ${cls}">${sign}${fmt(pnl)}</span></td>
           <td data-label="P&L (%)"><span class="badge ${cls}">${sign}${pnlPct.toFixed(2)}%</span></td>
           <td class="cell-actions" data-label="Reorder" style="white-space:nowrap">
