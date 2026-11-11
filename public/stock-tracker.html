@@ -190,6 +190,13 @@
   }
 
   .chart-wrap h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .chart-head h2 { margin-bottom: 0; }
+  .seg-toggle { display: inline-flex; border: 1px solid #d1d1d6; border-radius: 8px; overflow: hidden; }
+  .seg-toggle .seg { border: none; background: #fff; color: #6e6e73; font-size: 11px; padding: 5px 11px; cursor: pointer; font-family: inherit; }
+  .seg-toggle .seg.active { background: #007aff; color: #fff; }
+  .group-input { width: 100px; padding: 4px 7px; border: 1px solid #d1d1d6; border-radius: 6px; font-size: 12px; font-family: inherit; background: #f9f9fb; outline: none; }
+  .group-input:focus { border-color: #007aff; background: #fff; }
 
   /* Portfolio Insights */
   .insights-wrap { background: #fff; border-radius: 12px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-top: 20px; }
@@ -342,11 +349,13 @@
         <th>Alloc %</th>
         <th>P&L ($)</th>
         <th>P&L (%)</th>
+        <th>Group</th>
         <th></th>
       </tr>
     </thead>
     <tbody id="holdings-body"></tbody>
   </table>
+  <datalist id="group-list"></datalist>
 </div>
 
 <div class="add-form">
@@ -376,6 +385,10 @@
       <label>Tag (optional)</label>
       <input name="tag" placeholder="ESPP / RSU" style="width:110px" />
     </div>
+    <div class="form-group">
+      <label>Group (optional)</label>
+      <input name="group" list="group-list" placeholder="e.g. Tech" style="width:110px" />
+    </div>
     <button class="btn btn-primary" onclick="addPosition()">Add</button>
   </div>
   <p class="note">Ticker, Shares, and Cost Basis are required. Leave Current Price blank to fetch it live. New positions are saved automatically in this browser.</p>
@@ -383,7 +396,13 @@
 
 <div class="chart-row">
   <div class="chart-wrap">
-    <h2>Portfolio Allocation (by Value)</h2>
+    <div class="chart-head">
+      <h2>Portfolio Allocation</h2>
+      <div class="seg-toggle">
+        <button id="alloc-seg-position" class="seg active" onclick="setAllocMode('position')">By position</button>
+        <button id="alloc-seg-group" class="seg" onclick="setAllocMode('group')">By group</button>
+      </div>
+    </div>
     <canvas id="alloc-chart" height="240"></canvas>
   </div>
   <div class="chart-wrap">
@@ -452,6 +471,7 @@
     const cost = parseFloat(document.querySelector('input[name="cost"]').value);
     const priceRaw = document.querySelector('input[name="price"]').value;
     const tag = document.querySelector('input[name="tag"]').value.trim();
+    const group = document.querySelector('input[name="group"]').value.trim();
 
     if (!ticker || isNaN(shares) || shares <= 0 || isNaN(cost) || cost < 0) {
       alert('Please fill in Ticker, Shares, and Cost Basis.');
@@ -464,10 +484,10 @@
     const autoPrice = isNaN(price) || price <= 0;
     if (autoPrice) price = cost;
 
-    const pos = { ticker, company, shares, cost, price, tag, id: nextId++ };
+    const pos = { ticker, company, shares, cost, price, tag, group, id: nextId++ };
     positions.push(pos);
 
-    ['ticker','company','shares','cost','price','tag'].forEach(n => {
+    ['ticker','company','shares','cost','price','tag','group'].forEach(n => {
       document.querySelector(`input[name="${n}"]`).value = '';
     });
 
@@ -504,6 +524,24 @@
     if (!p) return;
     const v = parseFloat(val);
     if (!isNaN(v) && v >= 0) { p[field] = v; savePortfolio(positions); }
+  }
+
+  const escAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Assign/clear a position's group (category) used by the allocation chart.
+  function setGroup(id, val) {
+    const p = positions.find(p => p.id === id);
+    if (!p) return;
+    const v = (val || '').trim();
+    if ((p.group || '') !== v) { p.group = v; render(); }
+  }
+
+  // Allocation chart grouping mode: 'position' (per ticker) or 'group' (by category)
+  let allocMode = (() => { try { return localStorage.getItem('stocktracker.allocMode') || 'position'; } catch (e) { return 'position'; } })();
+  function setAllocMode(m) {
+    allocMode = m;
+    try { localStorage.setItem('stocktracker.allocMode', m); } catch (e) {}
+    render();
   }
 
   function removePosition(id) {
@@ -719,7 +757,7 @@
     const tbody = document.getElementById('holdings-body');
 
     if (positions.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No positions — add one above.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No positions — add one above.</td></tr>';
       ['total-cost','total-value','total-day','total-pnl','total-pnl-pct'].forEach(id => {
         document.getElementById(id).textContent = '—';
         document.getElementById(id).className = 'card-value';
@@ -788,6 +826,10 @@
           <td data-label="Alloc %">${alloc.toFixed(1)}%</td>
           <td data-label="P&L ($)"><span class="badge ${cls}">${sign}${fmt(pnl)}</span></td>
           <td data-label="P&L (%)"><span class="badge ${cls}">${sign}${pnlPct.toFixed(2)}%</span></td>
+          <td data-label="Group">
+            <input class="group-input" list="group-list" value="${escAttr(p.group || '')}" placeholder="—"
+              onchange="setGroup(${p.id}, this.value)" onblur="setGroup(${p.id}, this.value)" />
+          </td>
           <td class="cell-actions" data-label="Reorder" style="white-space:nowrap">
             <span class="drag-handle" title="Drag to reorder" onmousedown="armDrag(this)">⠿</span>
             <button class="btn-move" title="Move up" ${idx === 0 ? 'disabled' : ''} onclick="movePosition(${p.id}, -1)">▲</button>
@@ -797,6 +839,13 @@
         </tr>
       `;
     }).join('');
+
+    // Group autocomplete options
+    const gl = document.getElementById('group-list');
+    if (gl) {
+      const groupOpts = [...new Set(positions.map(p => (p.group || '').trim()).filter(Boolean))];
+      gl.innerHTML = groupOpts.map(g => `<option value="${escAttr(g)}"></option>`).join('');
+    }
 
     // Summary
     const totalCost = positions.reduce((s, p) => s + p.shares * p.cost, 0);
@@ -843,10 +892,16 @@
     // Allocation chart
     const colors = ['#007aff','#34c759','#ff9500','#ff3b30','#af52de','#5ac8fa','#ffcc00','#ff6b6b','#4ecdc4','#45b7d1','#a29bfe'];
 
-    // Aggregate by ticker for chart labels (QUIK ESPP + RSU combined)
+    // Keep the toggle buttons in sync with the current mode
+    const segP = document.getElementById('alloc-seg-position'), segG = document.getElementById('alloc-seg-group');
+    if (segP && segG) { segP.classList.toggle('active', allocMode === 'position'); segG.classList.toggle('active', allocMode === 'group'); }
+
+    // Aggregate by group (category) or by ticker (QUIK ESPP + RSU combined)
     const aggMap = {};
-    positions.forEach((p, i) => {
-      const key = p.ticker + (p.tag ? ` (${p.tag})` : '');
+    positions.forEach((p) => {
+      const key = allocMode === 'group'
+        ? ((p.group && p.group.trim()) ? p.group.trim() : 'Ungrouped')
+        : p.ticker + (p.tag ? ` (${p.tag})` : '');
       aggMap[key] = (aggMap[key] || 0) + p.shares * p.price;
     });
     const aggLabels = Object.keys(aggMap);
